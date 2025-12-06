@@ -1,0 +1,185 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Deep Space Black Theme */
+    --background: 240 10% 4%;
+    --foreground: 210 40% 98%;
+
+    --card: 240 10% 6%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 240 10% 6%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Electric Blue Primary */
+    --primary: 217 91% 60%;
+    --primary-foreground: 240 10% 4%;
+
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 32% 12%;
+    --muted-foreground: 215 20% 65%;
+
+    /* Cyan Accent / Neon Glow */
+    --accent: 187 92% 43%;
+    --accent-foreground: 240 10% 4%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 187 92% 43%;
+
+    --radius: 0.75rem;
+
+    /* Custom Design Tokens */
+    --neon-cyan: 187 92% 43%;
+    --neon-blue: 217 91% 60%;
+    --deep-space: 240 10% 4%;
+    --glass-bg: 240 10% 8%;
+    --glass-border: 217 32% 25%;
+
+    /* Sidebar */
+    --sidebar-background: 240 10% 5%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 240 10% 4%;
+    --sidebar-accent: 217 32% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 32% 17%;
+    --sidebar-ring: 187 92% 43%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism */
+  .glass {
+    @apply bg-card/60 backdrop-blur-xl border border-glass-border;
+  }
+
+  .glass-strong {
+    @apply bg-card/80 backdrop-blur-2xl border border-glass-border;
+  }
+
+  /* Neon Glow Effects */
+  .neon-glow {
+    box-shadow: 0 0 15px hsl(var(--neon-cyan) / 0.5),
+                0 0 30px hsl(var(--neon-cyan) / 0.3),
+                0 0 45px hsl(var(--neon-cyan) / 0.1);
+  }
+
+  .neon-glow-sm {
+    box-shadow: 0 0 10px hsl(var(--neon-cyan) / 0.4),
+                0 0 20px hsl(var(--neon-cyan) / 0.2);
+  }
+
+  .neon-glow-blue {
+    box-shadow: 0 0 15px hsl(var(--neon-blue) / 0.5),
+                0 0 30px hsl(var(--neon-blue) / 0.3);
+  }
+
+  .neon-border {
+    @apply border border-accent/50;
+    box-shadow: inset 0 0 20px hsl(var(--neon-cyan) / 0.1),
+                0 0 15px hsl(var(--neon-cyan) / 0.3);
+  }
+
+  /* Gradient backgrounds */
+  .gradient-radial {
+    background: radial-gradient(ellipse at top, hsl(var(--neon-blue) / 0.15) 0%, transparent 50%);
+  }
+
+  .gradient-mesh {
+    background: 
+      radial-gradient(at 40% 20%, hsl(var(--neon-cyan) / 0.1) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, hsl(var(--neon-blue) / 0.15) 0px, transparent 50%),
+      radial-gradient(at 0% 50%, hsl(var(--neon-cyan) / 0.05) 0px, transparent 50%);
+  }
+
+  /* Text gradients */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent via-primary to-accent;
+  }
+
+  /* Animations */
+  .animate-pulse-neon {
+    animation: pulse-neon 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-neon {
+    0%, 100% {
+      box-shadow: 0 0 10px hsl(var(--neon-cyan) / 0.6),
+                  0 0 20px hsl(var(--neon-cyan) / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 20px hsl(var(--neon-cyan) / 0.8),
+                  0 0 40px hsl(var(--neon-cyan) / 0.5),
+                  0 0 60px hsl(var(--neon-cyan) / 0.3);
+    }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Selection */
+::selection {
+  background: hsl(var(--accent) / 0.3);
+  color: hsl(var(--foreground));
+}

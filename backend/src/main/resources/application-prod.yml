@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: IntelliDocAI Backend
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+    # --- Producer Settings ---
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+    # --- Consumer Settings ---
+    consumer:
+      group-id: intellidoc-workers
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        # Crucial: Allow deserializing your specific DTOs
+        spring.json.trusted.packages: "*"
+        spring.json.value.default.type: "com.intellidocAI.backend.dto.RepositoryProcessingRequest"
+
+    # --- MAIN KAFKA PROPERTIES (including Security) ---
+    properties:
+      security.protocol: SASL_SSL
+      sasl.mechanism: PLAIN
+      sasl.jaas.config: ${KAFKA_JAAS_CONFIG}
+
+  data:
+    mongodb:
+      uri: ${MONGO_URI}
+      database: ${MONGO_DATABASE_NAME}
+      auto-index-creation: true
+
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: false
+
+
+
+repo.clone.path: ${REPO_CLONE_PATH}
+
+app:
+  jwtSecret: ${JWT_SECRET}
+  jwtExpirationMs: 86400000
+
+
+server:
+  port: 8080
