@@ -10,7 +10,8 @@ import {
   ArrowRight,
   Sparkles,
   FileText,
-  LayoutDashboard
+  LayoutDashboard,
+  ChevronDown
 } from 'lucide-react';
 
 export default function Index() {
@@ -74,19 +75,25 @@ export default function Index() {
                 </Button>
               </Link>
 
-              {/* Secondary Button Logic */}
-              <Link to={token ? "/dashboard" : "/auth"}>
-                <Button variant="glass" size="xl">
-                  View Demo
-                </Button>
-              </Link>
+              {/* Learn More Button - Scrolls to Features */}
+              <Button 
+                variant="glass" 
+                size="xl"
+                onClick={() => {
+                  document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="group"
+              >
+                Learn More
+                <ChevronDown className="h-5 w-5 ml-2 transition-transform group-hover:translate-y-1" />
+              </Button>
             </div>
           </div>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="py-24 relative">
+      <section id="features" className="py-24 relative scroll-mt-16">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
@@ -210,7 +217,7 @@ export default function Index() {
       {/* Footer */}
       <footer className="py-8 border-t border-border">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© 2025 Intelli-Doc AI. Built with ❤️ for developers.</p>
+          <p>© 2026 Intelli-Doc AI. Built with ❤️ for developers.</p>
         </div>
       </footer>
     </div>

@@ -2,6 +2,9 @@ package com.intellidocAI.backend.service;
 
 import com.intellidocAI.backend.config.KafkaTopicConfig;
 import com.intellidocAI.backend.dto.RepositoryProcessingRequest;
+import com.intellidocAI.backend.exception.DuplicateResourceException;
+import com.intellidocAI.backend.exception.ForbiddenAccessException;
+import com.intellidocAI.backend.exception.ResourceNotFoundException;
 import com.intellidocAI.backend.model.Documentation;
 import com.intellidocAI.backend.model.Repository;
 import com.intellidocAI.backend.repository.DocumentationRepository;
@@ -17,7 +20,6 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 
 @Service
 @Slf4j
@@ -35,9 +37,9 @@ public class RepositoryService {
     @Value("${repo.clone.path}")
     private String reposDirectory;
 
-
     // 1. Queue Code Analysis
-    public Repository createAndQueueRepository(String repoUrl, String userId, RepositoryProcessingRequest.ActionType actionType) {
+    public Repository createAndQueueRepository(String repoUrl, String userId,
+            RepositoryProcessingRequest.ActionType actionType) {
 
         // 1. NORMALIZE URL (Remove .git and trailing slash)
         String cleanUrl = normalizeUrl(repoUrl);
@@ -48,7 +50,7 @@ public class RepositoryService {
                 .anyMatch(r -> normalizeUrl(r.getUrl()).equalsIgnoreCase(cleanUrl));
 
         if (alreadyExists) {
-            throw new IllegalArgumentException("Repository already exists in your dashboard.");
+            throw new DuplicateResourceException("Repository already exists in your dashboard.");
         }
 
         Repository repository = new Repository();
@@ -77,15 +79,14 @@ public class RepositoryService {
     // 2. Queue Readme Generation
     public void queueReadmeGeneration(String repositoryId) {
         Repository repository = repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> new RuntimeException("Repo not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Repository not found: " + repositoryId));
 
         RepositoryProcessingRequest request = new RepositoryProcessingRequest(
                 repository.getId(),
                 repository.getUrl(),
                 repository.getLocalPath(),
                 repository.getName(),
-                RepositoryProcessingRequest.ActionType.GENERATE_README
-        );
+                RepositoryProcessingRequest.ActionType.GENERATE_README);
 
         kafkaTemplate.send(KafkaTopicConfig.REPO_PROCESSING_TOPIC, request);
         log.info("QUEUED README GENERATION for: {}", repository.getName());
@@ -97,7 +98,7 @@ public class RepositoryService {
     public Map<String, String> getStatusByRepositoryId(String repositoryId) {
         // Find the repository by its ID
         Repository repository = repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> new RuntimeException("Repository not found: " + repositoryId));
+                .orElseThrow(() -> new ResourceNotFoundException("Repository not found: " + repositoryId));
 
         // Return the status in a JSON-friendly Map
         // (Make sure you added the 'status' field to your Repository.java model)
@@ -122,10 +123,13 @@ public class RepositoryService {
 
     // Helper to strip .git and /
     private String normalizeUrl(String url) {
-        if (url == null) return "";
+        if (url == null)
+            return "";
         String clean = url.trim();
-        if (clean.endsWith("/")) clean = clean.substring(0, clean.length() - 1);
-        if (clean.endsWith(".git")) clean = clean.substring(0, clean.length() - 4);
+        if (clean.endsWith("/"))
+            clean = clean.substring(0, clean.length() - 1);
+        if (clean.endsWith(".git"))
+            clean = clean.substring(0, clean.length() - 4);
         return clean;
     }
 
@@ -134,11 +138,11 @@ public class RepositoryService {
     public void deleteRepository(String repositoryId, String userId) {
         // 1. Find Repo
         Repository repository = repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> new RuntimeException("Repository not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Repository not found: " + repositoryId));
 
         // 2. Security Check: Ensure the user actually owns this repo!
         if (!repository.getUserId().equals(userId)) {
-            throw new RuntimeException("Access Denied: You cannot delete a repository you do not own.");
+            throw new ForbiddenAccessException("Access Denied: You cannot delete a repository you do not own.");
         }
 
         // 3. Delete all associated documentation first (Clean up)
@@ -149,6 +153,5 @@ public class RepositoryService {
 
         log.info("Deleted repository: {}", repository.getName());
     }
-
 
 }

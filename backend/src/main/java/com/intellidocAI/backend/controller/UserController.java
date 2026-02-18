@@ -1,17 +1,16 @@
 package com.intellidocAI.backend.controller;
 
 import com.intellidocAI.backend.dto.UserDTO;
+import com.intellidocAI.backend.exception.ForbiddenAccessException;
+import com.intellidocAI.backend.exception.ResourceNotFoundException;
 import com.intellidocAI.backend.mapper.UserMapper;
 import com.intellidocAI.backend.model.User;
 import com.intellidocAI.backend.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/users")
@@ -24,18 +23,18 @@ public class UserController {
     private UserMapper userMapper;
 
     /**
-     * 🆕 NEW: Get Current Logged-in User Profile
+     * Get Current Logged-in User Profile.
      * Frontend calls this with just the Token to get user details.
      */
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUserProfile() {
+    public ResponseEntity<UserDTO> getCurrentUserProfile() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        Optional<UserDTO> user = userService.getUserByEmail(email);
-        return user.map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        UserDTO user = userService.getUserByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+        return ResponseEntity.ok(user);
     }
 
-    // Get All Users (Admin use case mostly, but kept open for now)
+    // Get All Users
     @GetMapping
     public ResponseEntity<?> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());
@@ -43,53 +42,43 @@ public class UserController {
 
     // Get User By ID
     @GetMapping("/{id}")
-    public ResponseEntity<?> getUserById(@PathVariable String id) {
-        return userService.getUserById(id)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+    public ResponseEntity<UserDTO> getUserById(@PathVariable String id) {
+        UserDTO user = userService.getUserById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+        return ResponseEntity.ok(user);
     }
 
     // Get User By Email
     @GetMapping("/email/{email}")
-    public ResponseEntity<?> getUserByEmail(@PathVariable String email) {
-        Optional<UserDTO> user = userService.getUserByEmail(email);
-        return user.map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+    public ResponseEntity<UserDTO> getUserByEmail(@PathVariable String email) {
+        UserDTO user = userService.getUserByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+        return ResponseEntity.ok(user);
     }
 
     // Update User (SECURED)
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateUser(@PathVariable String id, @RequestBody User updatedUserData) {
+    public ResponseEntity<UserDTO> updateUser(@PathVariable String id, @RequestBody User updatedUserData) {
         // 1. Get the currently logged-in user's email from the Token
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String currentPrincipalEmail = auth.getName();
 
         // 2. Find the user we are trying to update
-        Optional<User> targetUserOptional = userService.findUserEntityById(id);
-
-        if (targetUserOptional.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        User targetUser = targetUserOptional.get();
+        User targetUser = userService.findUserEntityById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
 
         // 3. SECURITY CHECK: Ensure the logged-in user owns this account
-        // (Unless you add an "ADMIN" role check here later)
         if (!targetUser.getEmail().equals(currentPrincipalEmail)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Access Denied: You can only update your own profile.");
+            throw new ForbiddenAccessException("Access Denied: You can only update your own profile.");
         }
 
         // 4. Proceed with update
         targetUser.setUsername(updatedUserData.getUsername());
         targetUser.setEmail(updatedUserData.getEmail());
-        // Note: We usually don't update roles here to prevent privilege escalation
-        // targetUser.setRole(updatedUserData.getRole());
 
         // Only update password if a new one is provided and not empty
         if (updatedUserData.getPassword() != null && !updatedUserData.getPassword().isEmpty()) {
             // ideally, you should re-hash the password here using PasswordEncoder
-            // But usually password updates are done via a separate secure endpoint
         }
 
         User savedUser = userService.saveUser(targetUser);
@@ -104,16 +93,12 @@ public class UserController {
         String currentPrincipalEmail = auth.getName();
 
         // 2. Find the user
-        Optional<User> targetUserOptional = userService.findUserEntityById(id);
-
-        if (targetUserOptional.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
+        User targetUser = userService.findUserEntityById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
 
         // 3. SECURITY CHECK: Ensure user owns the account
-        if (!targetUserOptional.get().getEmail().equals(currentPrincipalEmail)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Access Denied: You can only delete your own account.");
+        if (!targetUser.getEmail().equals(currentPrincipalEmail)) {
+            throw new ForbiddenAccessException("Access Denied: You can only delete your own account.");
         }
 
         userService.deleteUser(id);

@@ -3,8 +3,9 @@ import { useRepoStore } from '@/stores/repoStore';
 import { repoAPI } from '@/lib/api';
 import { Navbar } from '@/components/Navbar';
 import { RepoCard } from '@/components/RepoCard';
+import { RepoCardSkeleton } from '@/components/RepoCardSkeleton';
 import { AddRepoDialog } from '@/components/AddRepoDialog';
-import { GitBranch, Loader2, Sparkles } from 'lucide-react';
+import { GitBranch, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Dashboard() {
@@ -42,8 +43,16 @@ export default function Dashboard() {
 
         {/* Repository Grid */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-accent" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="animate-fade-in"
+                style={{ animationDelay: `${i * 100}ms` }}
+              >
+                <RepoCardSkeleton />
+              </div>
+            ))}
           </div>
         ) : repositories.length === 0 ? (
           <div className="glass rounded-2xl p-12 text-center animate-fade-in">

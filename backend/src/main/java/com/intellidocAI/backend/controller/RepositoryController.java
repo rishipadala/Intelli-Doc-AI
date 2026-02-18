@@ -1,7 +1,7 @@
 package com.intellidocAI.backend.controller;
 
-
 import com.intellidocAI.backend.dto.RepositoryProcessingRequest;
+import com.intellidocAI.backend.exception.ResourceNotFoundException;
 import com.intellidocAI.backend.model.Documentation;
 import com.intellidocAI.backend.model.Repository;
 import com.intellidocAI.backend.model.User;
@@ -33,61 +33,40 @@ public class RepositoryController {
         String repoUrl = payload.get("url");
 
         if (repoUrl == null) {
-            return ResponseEntity.badRequest().body("Request must include 'url' and 'userId'.");
+            throw new IllegalArgumentException("Request must include 'url'.");
         }
 
-        try {
-            // 1. Get the currently logged-in user's details
-            User currentUser = getCurrentUser();
+        // Get the currently logged-in user's details
+        User currentUser = getCurrentUser();
 
-            // 2. Use the ID from the token, NOT the request body
-            Repository newRepository = repositoryService.createAndQueueRepository(
-                    repoUrl,
-                    currentUser.getId(),
-                    RepositoryProcessingRequest.ActionType.ANALYZE_CODE
-            );
+        // Use the ID from the token, NOT the request body
+        Repository newRepository = repositoryService.createAndQueueRepository(
+                repoUrl,
+                currentUser.getId(),
+                RepositoryProcessingRequest.ActionType.ANALYZE_CODE);
 
-            // Return 202 ACCEPTED. This tells the UI "I've accepted
-            // the job, but it's not done yet." This is the correct
-            // asynchronous response.
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(newRepository);
-        } catch (IllegalArgumentException e) {
-            // 🔥 CATCH DUPLICATE ERROR HERE
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
-
-        }catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to clone repository: " + e.getMessage());
-        }
+        // Return 202 ACCEPTED — "I've accepted the job, but it's not done yet."
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(newRepository);
     }
 
-    // --- 2. 🆕 NEW: Generate README Only ---
+    // Generate README Only
     @PostMapping("/{repositoryId}/generate-readme")
     public ResponseEntity<?> generateReadmeOnly(@PathVariable String repositoryId) {
-        try {
-            repositoryService.queueReadmeGeneration(repositoryId);
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("message", "Readme generation queued."));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
-        }
+        repositoryService.queueReadmeGeneration(repositoryId);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("message", "Readme generation queued."));
     }
 
     /**
-     * NEW ENDPOINT: Polls for the status of a processing job.
+     * Polls for the status of a processing job.
      */
     @GetMapping("/{repositoryId}/status")
     public ResponseEntity<?> getRepositoryStatus(@PathVariable String repositoryId) {
-        try {
-            Map<String, String> status = repositoryService.getStatusByRepositoryId(repositoryId);
-            return ResponseEntity.ok(status);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+        Map<String, String> status = repositoryService.getStatusByRepositoryId(repositoryId);
+        return ResponseEntity.ok(status);
     }
 
     /**
-     * UPDATED: Get "My" repositories.
-     * We don't need to pass userID in the URL anymore.
+     * Get "My" repositories (uses userId from JWT token).
      */
     @GetMapping("/my-repos")
     public ResponseEntity<List<Repository>> getMyRepositories() {
@@ -107,31 +86,25 @@ public class RepositoryController {
      */
     private User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName(); // The JWT subject is the email
+        String email = authentication.getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
     }
 
-    // Endpoint: GET /api/repositories/{repositoryId}/readme
+    // Get the generated README for a repository
     @GetMapping("/{repositoryId}/readme")
     public ResponseEntity<?> getRepositoryReadme(@PathVariable String repositoryId) {
         return repositoryService.getReadmeForRepository(repositoryId)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new ResourceNotFoundException("README not found for repository: " + repositoryId));
     }
 
-    // 🔥 Delete Repository
+    // Delete Repository (ownership verified in service layer)
     @DeleteMapping("/{repositoryId}")
     public ResponseEntity<?> deleteRepository(@PathVariable String repositoryId) {
-        try {
-            User currentUser = getCurrentUser();
-            repositoryService.deleteRepository(repositoryId, currentUser.getId());
-            return ResponseEntity.ok(Map.of("message", "Repository deleted successfully."));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred while deleting.");
-        }
+        User currentUser = getCurrentUser();
+        repositoryService.deleteRepository(repositoryId, currentUser.getId());
+        return ResponseEntity.ok(Map.of("message", "Repository deleted successfully."));
     }
 
 }
