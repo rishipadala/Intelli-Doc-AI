@@ -1,14 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import { useProgressLogStore } from '@/stores/progressLogStore';
 
 const WS_URL = 'http://localhost:8080/ws';
 
 export const useRepoWebSocket = (repoId: string | undefined, onStatusUpdate: (status: string) => void) => {
   const clientRef = useRef<Client | null>(null);
-  
-  // 🔥 FIX: Store the latest callback in a ref to avoid stale closures
+
+  // Store the latest callback in a ref to avoid stale closures
   const onStatusUpdateRef = useRef(onStatusUpdate);
+  const addLog = useProgressLogStore((s) => s.addLog);
 
   // Update the ref whenever the callback changes (e.g. when currentRepo updates)
   useEffect(() => {
@@ -24,12 +26,22 @@ export const useRepoWebSocket = (repoId: string | undefined, onStatusUpdate: (st
       reconnectDelay: 5000,
       onConnect: () => {
         console.log(`Connected to WS for Repo: ${repoId}`);
-        
+
         client.subscribe(`/topic/repo/${repoId}`, (message) => {
           if (message.body) {
             const payload = JSON.parse(message.body);
-            // 🔥 FIX: Always call the LATEST version of the function
-            onStatusUpdateRef.current(payload.status);
+
+            if (payload.type === 'PROGRESS_LOG') {
+              // Push log event to the progress log store
+              addLog(repoId, {
+                step: payload.step,
+                message: payload.message,
+                timestamp: payload.timestamp,
+              });
+            } else if (payload.type === 'STATUS_UPDATE' || payload.status) {
+              // STATUS_UPDATE or legacy format (backward compatible)
+              onStatusUpdateRef.current(payload.status);
+            }
           }
         });
       },
@@ -43,5 +55,5 @@ export const useRepoWebSocket = (repoId: string | undefined, onStatusUpdate: (st
         clientRef.current.deactivate();
       }
     };
-  }, [repoId]);
+  }, [repoId, addLog]);
 };

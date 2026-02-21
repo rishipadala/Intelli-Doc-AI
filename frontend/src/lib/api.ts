@@ -38,33 +38,36 @@ api.interceptors.response.use(
 export const authAPI = {
   signup: (data: { username: string; email: string; password: string }) =>
     api.post('/auth/signup', data),
-  
+
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
-  
+
   getMe: () => api.get('/users/me'),
 };
 
 // Repository API
 export const repoAPI = {
-  create: (url: string) => 
+  create: (url: string) =>
     api.post('/repositories', { url }),
-  
-  getMyRepos: () => 
+
+  getMyRepos: () =>
     api.get('/repositories/my-repos'),
-  
-  getStatus: (id: string) => 
+
+  getStatus: (id: string) =>
     api.get(`/repositories/${id}/status`),
-  
-  getDocumentation: (id: string) => 
+
+  getDocumentation: (id: string) =>
     api.get(`/repositories/${id}/documentation`),
-  
-  generateReadme: (id: string) => 
+
+  generateReadme: (id: string) =>
     api.post(`/repositories/${id}/generate-readme`),
-  
-  getReadme: (id: string) => 
+
+  getReadme: (id: string) =>
     api.get(`/repositories/${id}/readme`),
 
-  delete: (id: string) => 
+  delete: (id: string) =>
     api.delete(`/repositories/${id}`),
+
+  updateReadme: (id: string, content: string) =>
+    api.put(`/repositories/${id}/readme`, { content }),
 };

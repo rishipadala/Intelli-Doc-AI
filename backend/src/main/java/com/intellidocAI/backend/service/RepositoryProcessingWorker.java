@@ -40,6 +40,8 @@ public class RepositoryProcessingWorker {
 
     private static final Logger logger = LoggerFactory.getLogger(RepositoryProcessingWorker.class);
     private static final long MAX_FILE_SIZE_BYTES = 100 * 1024; // 100KB limit per file
+    private static final int BATCH_SIZE = 4; // Files per batch API call
+    private static final int MAX_FILES_TO_SELECT = 8; // Max files to analyze per repo
 
     @Autowired
     private GitService gitService;
@@ -68,6 +70,23 @@ public class RepositoryProcessingWorker {
                 .build();
     }
 
+    // ============================================================================================
+    // 📡 PROGRESS LOG BROADCASTER
+    // ============================================================================================
+    private void sendProgressLog(String repoId, String step, String message) {
+        messagingTemplate.convertAndSend("/topic/repo/" + repoId, Map.of(
+                "type", "PROGRESS_LOG",
+                "step", step,
+                "message", message,
+                "timestamp", LocalDateTime.now().toString()));
+    }
+
+    private void sendStatusUpdate(String repoId, String status) {
+        messagingTemplate.convertAndSend("/topic/repo/" + repoId, Map.of(
+                "type", "STATUS_UPDATE",
+                "status", status));
+    }
+
     @KafkaListener(topics = KafkaTopicConfig.REPO_PROCESSING_TOPIC, groupId = "${spring.kafka.consumer.group-id}")
     public void processRepository(RepositoryProcessingRequest request) {
         Repository repository = repositoryRepository.findById(request.getRepositoryId()).orElse(null);
@@ -84,8 +103,8 @@ public class RepositoryProcessingWorker {
             logger.error("CRITICAL FAILURE for {}", repository.getName(), e);
             repository.setStatus("FAILED");
             repositoryRepository.save(repository);
-            // Optional: Broadcast FAILURE status too
-            messagingTemplate.convertAndSend("/topic/repo/" + repository.getId(), Map.of("status", "FAILED"));
+            sendProgressLog(repository.getId(), "ERROR", "Processing failed: " + e.getMessage());
+            sendStatusUpdate(repository.getId(), "FAILED");
         }
     }
 
@@ -95,25 +114,33 @@ public class RepositoryProcessingWorker {
     private void performCodeAnalysis(Repository repository, RepositoryProcessingRequest request) {
         repository.setStatus("ANALYZING_CODE");
         repositoryRepository.save(repository);
-        messagingTemplate.convertAndSend("/topic/repo/" + repository.getId(), Map.of("status", "ANALYZING_CODE"));
+        sendStatusUpdate(repository.getId(), "ANALYZING_CODE");
+        sendProgressLog(repository.getId(), "INIT", "Starting code analysis pipeline...");
 
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("intellidoc_" + request.getRepositoryId());
+            sendProgressLog(repository.getId(), "CLONE", "Cloning repository from GitHub...");
             gitService.cloneRepository(request.getRepoUrl(), tempDir.toAbsolutePath().toString());
+            sendProgressLog(repository.getId(), "CLONE", "Repository cloned successfully");
 
+            sendProgressLog(repository.getId(), "SCAN", "Scanning project structure and file tree...");
             String projectContext = generateProjectContext(tempDir);
             repository.setProjectStructure(projectContext);
+            sendProgressLog(repository.getId(), "SCAN", "Project structure mapped");
 
-            // --- 1. ARCHITECT SELECTION (CACHED) ---
-            List<String> selectedFiles;
-            String architectCacheKey = "architect:" + toSha256(projectContext); // Hash the tree structure
+            // --- 1. AI ARCHITECT FILE SELECTION (Cached, Heuristic as Fallback) ---
+            List<Path> filesToProcess = new ArrayList<>();
+            Path finalTempDir = tempDir;
+            String architectCacheKey = "architect:" + toSha256(projectContext);
 
-            // Check Cache first
+            // Check Redis cache first (saves 1 API call on repeat analysis)
+            List<String> selectedFiles = null;
             String cachedSelection = redisTemplate.opsForValue().get(architectCacheKey);
 
             if (cachedSelection != null) {
                 logger.info("Architect Cache Hit! Skipping AI consultation.");
+                sendProgressLog(repository.getId(), "ARCHITECT", "AI Architect cache hit — using saved file selection");
                 try {
                     selectedFiles = objectMapper.readValue(cachedSelection, new TypeReference<List<String>>() {
                     });
@@ -122,28 +149,27 @@ public class RepositoryProcessingWorker {
                     selectedFiles = callAiFileSelector(projectContext).block();
                 }
             } else {
-                logger.info("Consulting AI Architect (Fresh Analysis)...");
+                logger.info("Consulting AI Architect for intelligent file selection...");
+                sendProgressLog(repository.getId(), "ARCHITECT",
+                        "Consulting AI Architect for intelligent file selection...");
                 selectedFiles = callAiFileSelector(projectContext).block();
 
-                // Cache the result for 7 days
+                // Cache the AI selection for 2 days
                 if (selectedFiles != null && !selectedFiles.isEmpty()) {
                     try {
                         String json = objectMapper.writeValueAsString(selectedFiles);
-                        redisTemplate.opsForValue().set(architectCacheKey, json, Duration.ofDays(7));
+                        redisTemplate.opsForValue().set(architectCacheKey, json, Duration.ofDays(2));
                     } catch (JsonProcessingException e) {
                         logger.warn("Failed to cache architect response");
                     }
                 }
             }
 
-            // --- 2. Map & Filter ---
-            List<Path> filesToProcess = new ArrayList<>();
-            Path finalTempDir = tempDir;
-
-            if (selectedFiles == null || selectedFiles.isEmpty()) {
-                logger.warn("Architect Agent returned no files. Falling back to Heuristic.");
-                filesToProcess = fallbackSelection(tempDir);
-            } else {
+            // Map AI-selected file paths to actual Path objects
+            if (selectedFiles != null && !selectedFiles.isEmpty()) {
+                logger.info("AI Architect selected {} files.", selectedFiles.size());
+                sendProgressLog(repository.getId(), "ARCHITECT",
+                        "AI selected " + selectedFiles.size() + " key files for deep analysis");
                 try (Stream<Path> paths = Files.walk(tempDir)) {
                     List<String> finalSelectedFiles = selectedFiles;
                     filesToProcess = paths
@@ -152,60 +178,98 @@ public class RepositoryProcessingWorker {
                                 String relPath = finalTempDir.relativize(path).toString().replace("\\", "/");
                                 return finalSelectedFiles.stream().anyMatch(f -> relPath.endsWith(f));
                             })
-                            .limit(20)
+                            .limit(MAX_FILES_TO_SELECT)
                             .collect(Collectors.toList());
                 }
+            }
+
+            // Fallback to heuristic ONLY if AI Architect returned nothing
+            if (filesToProcess.isEmpty()) {
+                logger.warn("AI Architect returned no files. Falling back to heuristic selection.");
+                sendProgressLog(repository.getId(), "ARCHITECT", "Using smart heuristic file selection as fallback...");
+                filesToProcess = fallbackSelection(tempDir);
             }
 
             if (filesToProcess.isEmpty()) {
                 filesToProcess = fallbackSelection(tempDir);
             }
 
-            logger.info("Processing {} files...", filesToProcess.size());
+            logger.info("Processing {} files in batches of {}...", filesToProcess.size(), BATCH_SIZE);
+            sendProgressLog(repository.getId(), "PROCESS",
+                    "Preparing to analyze " + filesToProcess.size() + " files in batches of " + BATCH_SIZE);
 
-            // --- 3. Process Files (Smart Throttling) ---
-            Flux.fromIterable(filesToProcess)
-                    // REMOVED GLOBAL DELAY here to make Cache Hits fast!
-                    .flatMap(filePath -> {
-                        String relativePath = finalTempDir.relativize(filePath).toString();
-                        String fileContent = readString(filePath);
-                        if (fileContent == null || fileContent.isBlank())
-                            return Mono.empty();
+            // --- 2. Separate cached vs uncached files ---
+            List<Map<String, String>> uncachedFiles = new ArrayList<>();
+            for (Path filePath : filesToProcess) {
+                String relativePath = finalTempDir.relativize(filePath).toString().replace("\\", "/");
+                String fileContent = readString(filePath);
+                if (fileContent == null || fileContent.isBlank())
+                    continue;
 
-                        String cacheKey = "doc:" + toSha256(fileContent);
+                String cacheKey = "doc:" + toSha256(fileContent);
+                String cachedDoc = redisTemplate.opsForValue().get(cacheKey);
 
-                        // Check Redis Cache
-                        String cachedDoc = redisTemplate.opsForValue().get(cacheKey);
-                        if (cachedDoc != null) {
-                            logger.info("Cache Hit for: {}", relativePath); // Explicit Log
-                            saveDocumentation(repository.getId(), relativePath, cachedDoc);
-                            return Mono.empty();
+                if (cachedDoc != null) {
+                    logger.info("Cache Hit for: {}", relativePath);
+                    sendProgressLog(repository.getId(), "CACHE", "Cache hit for: " + relativePath);
+                    saveDocumentation(repository.getId(), relativePath, cachedDoc);
+                } else {
+                    uncachedFiles.add(Map.of(
+                            "path", relativePath,
+                            "content", fileContent));
+                }
+            }
+
+            // --- 3. BATCH Process uncached files (dramatically fewer API calls) ---
+            if (!uncachedFiles.isEmpty()) {
+                logger.info("{} files need AI generation (in {} batch(es))",
+                        uncachedFiles.size(), (int) Math.ceil((double) uncachedFiles.size() / BATCH_SIZE));
+
+                for (int i = 0; i < uncachedFiles.size(); i += BATCH_SIZE) {
+                    List<Map<String, String>> batch = uncachedFiles.subList(
+                            i, Math.min(i + BATCH_SIZE, uncachedFiles.size()));
+
+                    int batchNum = (i / BATCH_SIZE) + 1;
+                    int totalBatches = (int) Math.ceil((double) uncachedFiles.size() / BATCH_SIZE);
+                    logger.info("Processing batch {}/{} ({} files)", batchNum, totalBatches, batch.size());
+
+                    String batchFiles = batch.stream().map(f -> f.get("path")).collect(Collectors.joining(", "));
+                    sendProgressLog(repository.getId(), "AI_GENERATE",
+                            "Generating docs — batch " + batchNum + "/" + totalBatches + " (" + batchFiles + ")");
+
+                    List<Map<String, String>> batchResults = callBatchPythonService(batch, projectContext).block();
+
+                    if (batchResults != null) {
+                        for (Map<String, String> result : batchResults) {
+                            String path = result.get("path");
+                            String doc = result.get("documentation");
+                            if (path != null && doc != null && !doc.startsWith("Error:")) {
+                                saveDocumentation(repository.getId(), path, doc);
+                                sendProgressLog(repository.getId(), "SAVE", "Documentation saved: " + path);
+                                // Cache each file's doc individually
+                                String originalContent = batch.stream()
+                                        .filter(f -> f.get("path").equals(path))
+                                        .map(f -> f.get("content"))
+                                        .findFirst().orElse(null);
+                                if (originalContent != null) {
+                                    String cacheKey = "doc:" + toSha256(originalContent);
+                                    redisTemplate.opsForValue().set(cacheKey, doc, Duration.ofDays(2));
+                                }
+                            } else {
+                                logger.warn("AI Failed for file in batch: {} (Skipping save)", path);
+                            }
                         }
-
-                        logger.info("AI Generating for: {}", relativePath); // Explicit Log
-                        String prompt = createPrompt(fileContent, projectContext, relativePath);
-
-                        return callPythonService(prompt)
-                                // Add Delay ONLY for AI calls (Smart Throttling)
-                                .delaySubscription(Duration.ofMillis(1200))
-                                .doOnNext(docContent -> {
-                                    if (docContent.startsWith("Error:")) {
-                                        logger.warn("⚠️ AI Failed for file: {} (Skipping save)", relativePath);
-                                    } else {
-                                        saveDocumentation(repository.getId(), relativePath, docContent);
-                                        redisTemplate.opsForValue().set(cacheKey, docContent, Duration.ofDays(7));
-                                    }
-                                });
-                    }, 2)
-                    .blockLast();
+                    }
+                }
+            }
 
             repository.setStatus("ANALYSIS_COMPLETED");
             repository.setLastAnalyzedAt(LocalDateTime.now());
             repositoryRepository.save(repository);
 
-            // 3. 🔥 BROADCAST COMPLETION EVENT (ANALYSIS)
-            messagingTemplate.convertAndSend("/topic/repo/" + repository.getId(),
-                    Map.of("status", "ANALYSIS_COMPLETED"));
+            sendProgressLog(repository.getId(), "COMPLETE", "Code analysis complete! Documentation ready to view.");
+            // 🔥 BROADCAST COMPLETION EVENT (ANALYSIS)
+            sendStatusUpdate(repository.getId(), "ANALYSIS_COMPLETED");
 
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -218,7 +282,8 @@ public class RepositoryProcessingWorker {
     // 🔌 API CLIENTS
     // ============================================================================================
 
-    // 1. CALL ARCHITECT (Select Files)
+    // 1. CALL ARCHITECT (Select Files) — Only used as fallback when heuristic finds
+    // < 3 files
     private Mono<List<String>> callAiFileSelector(String fileTree) {
         return webClient.post()
                 .uri("/select-files")
@@ -237,15 +302,41 @@ public class RepositoryProcessingWorker {
                         return new ArrayList<String>();
                     }
                 })
-                .timeout(Duration.ofSeconds(75)) // Architect needs time to think (longer prompt)
+                .timeout(Duration.ofSeconds(75))
                 .onErrorResume(e -> {
                     logger.error("Architect Agent Error: {}", e.getMessage());
                     return Mono.just(new ArrayList<>());
                 })
-                .retryWhen(Retry.backoff(2, Duration.ofSeconds(1)));
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(2)));
     }
 
-    // 2. CALL WRITER (Generate Docs)
+    // 2. CALL BATCH WRITER (Generate Docs for multiple files in one API call)
+    @SuppressWarnings("unchecked")
+    private Mono<List<Map<String, String>>> callBatchPythonService(
+            List<Map<String, String>> files, String projectContext) {
+        return webClient.post()
+                .uri("/generate-docs-batch")
+                .bodyValue(Map.of(
+                        "files", files,
+                        "project_context", projectContext))
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> {
+                    Object resultsObj = response.get("results");
+                    if (resultsObj instanceof List) {
+                        return (List<Map<String, String>>) resultsObj;
+                    }
+                    return new ArrayList<Map<String, String>>();
+                })
+                .timeout(Duration.ofSeconds(120))
+                .onErrorResume(e -> {
+                    logger.warn("Batch AI Service Error: {}", e.getMessage());
+                    return Mono.just(new ArrayList<>());
+                })
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(3)));
+    }
+
+    // 3. CALL SINGLE WRITER (kept for README generation)
     private Mono<String> callPythonService(String prompt) {
         return webClient.post()
                 .uri("/generate-docs")
@@ -253,12 +344,12 @@ public class RepositoryProcessingWorker {
                 .retrieve()
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.getOrDefault("documentation", "Error: AI response missing content."))
-                .timeout(Duration.ofSeconds(120)) // Increased timeout for richer structured output
+                .timeout(Duration.ofSeconds(120))
                 .onErrorResume(e -> {
                     logger.warn("AI Service Error: {}", e.getMessage());
                     return Mono.just("Error: AI Service Timeout or Failure. " + e.getMessage());
                 })
-                .retryWhen(Retry.backoff(2, Duration.ofSeconds(2))); // Increased backoff delay
+                .retryWhen(Retry.backoff(2, Duration.ofSeconds(3)));
     }
 
     // ============================================================================================
@@ -271,7 +362,7 @@ public class RepositoryProcessingWorker {
             return paths.filter(Files::isRegularFile)
                     .filter(this::isValidCodeFile)
                     .sorted(Comparator.comparingInt(this::calculateFileScore).reversed())
-                    .limit(10)
+                    .limit(MAX_FILES_TO_SELECT)
                     .collect(Collectors.toList());
         }
     }
@@ -372,10 +463,13 @@ public class RepositoryProcessingWorker {
     private void performReadmeGeneration(Repository repository) {
         repository.setStatus("GENERATING_README");
         repositoryRepository.save(repository);
+        sendStatusUpdate(repository.getId(), "GENERATING_README");
+        sendProgressLog(repository.getId(), "INIT", "Starting README generation pipeline...");
         try {
             String projectStructure = repository.getProjectStructure();
             List<Documentation> existingDocs = documentationRepository.findByRepositoryId(repository.getId());
 
+            sendProgressLog(repository.getId(), "SCAN", "Collecting analyzed file summaries...");
             StringBuilder summariesContext = new StringBuilder();
             for (Documentation doc : existingDocs) {
                 if (doc.getFilePath().contains("README_GENERATED"))
@@ -385,6 +479,20 @@ public class RepositoryProcessingWorker {
             }
             if (summariesContext.length() == 0)
                 summariesContext.append("No files were successfully analyzed.");
+
+            // --- README CACHE CHECK ---
+            String readmeCacheKey = "readme:" + toSha256(projectStructure + summariesContext.toString());
+            String cachedReadme = redisTemplate.opsForValue().get(readmeCacheKey);
+            if (cachedReadme != null) {
+                logger.info("README Cache Hit! Skipping AI generation.");
+                sendProgressLog(repository.getId(), "CACHE", "README cache hit — using previously generated version");
+                saveDocumentation(repository.getId(), "README_GENERATED.md", cachedReadme);
+                repository.setStatus("COMPLETED");
+                repositoryRepository.save(repository);
+                sendProgressLog(repository.getId(), "COMPLETE", "README generated successfully!");
+                sendStatusUpdate(repository.getId(), "COMPLETED");
+                return;
+            }
 
             // HIGH-LEVEL PROMPT
             String prompt = String.format(
@@ -516,21 +624,31 @@ public class RepositoryProcessingWorker {
                             """,
                     projectStructure, summariesContext.toString());
 
+            sendProgressLog(repository.getId(), "AI_GENERATE",
+                    "AI is writing the Master README — this may take a moment...");
             String readmeContent = callPythonService(prompt).block();
             if (readmeContent != null && !readmeContent.startsWith("Error:")) {
                 saveDocumentation(repository.getId(), "README_GENERATED.md", readmeContent);
+                sendProgressLog(repository.getId(), "SAVE", "README saved to project documentation");
+                // Cache the README for 30 days
+                redisTemplate.opsForValue().set(readmeCacheKey, readmeContent, Duration.ofDays(2));
                 repository.setStatus("COMPLETED");
 
-                // 4. 🔥 BROADCAST COMPLETION EVENT (README)
-                messagingTemplate.convertAndSend("/topic/repo/" + repository.getId(), Map.of("status", "COMPLETED"));
+                sendProgressLog(repository.getId(), "COMPLETE", "Master README generated successfully!");
+                // 🔥 BROADCAST COMPLETION EVENT (README)
+                sendStatusUpdate(repository.getId(), "COMPLETED");
 
             } else {
                 repository.setStatus("FAILED");
+                sendProgressLog(repository.getId(), "ERROR", "AI failed to generate README content");
+                sendStatusUpdate(repository.getId(), "FAILED");
             }
             repositoryRepository.save(repository);
         } catch (Exception e) {
             repository.setStatus("FAILED");
             repositoryRepository.save(repository);
+            sendProgressLog(repository.getId(), "ERROR", "README generation failed: " + e.getMessage());
+            sendStatusUpdate(repository.getId(), "FAILED");
         }
     }
 
@@ -628,6 +746,18 @@ public class RepositoryProcessingWorker {
                         * **Output**: RETURN ONLY THE RAW MARKDOWN. No preamble, no "Here is the documentation".
                                     """,
                 fileName, projectContext, fileContent);
+    }
+
+    // Batch prompt builder (used only as a fallback if batch endpoint isn't
+    // available)
+    private String createBatchPrompt(List<Map<String, String>> files, String projectContext) {
+        StringBuilder filesSection = new StringBuilder();
+        for (int i = 0; i < files.size(); i++) {
+            filesSection.append(String.format("\n---\n**FILE %d: `%s`**\n```\n%s\n```\n",
+                    i + 1, files.get(i).get("path"), files.get(i).get("content")));
+        }
+        return String.format("Analyze the following %d files. Project context:\n```\n%s\n```\n%s",
+                files.size(), projectContext, filesSection.toString());
     }
 
     private void saveDocumentation(String repositoryId, String filePath, String content) {

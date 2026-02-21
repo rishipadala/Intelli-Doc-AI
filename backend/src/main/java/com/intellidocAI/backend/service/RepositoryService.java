@@ -121,6 +121,17 @@ public class RepositoryService {
                 .findFirst();
     }
 
+    // ✏️ UPDATE README: Edit the generated README content
+    public Documentation updateReadmeContent(String repositoryId, String newContent) {
+        Documentation readme = documentationRepository.findByRepositoryId(repositoryId)
+                .stream()
+                .filter(doc -> doc.getFilePath().equals("README_GENERATED.md"))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("README not found for repository: " + repositoryId));
+        readme.setContent(newContent);
+        return documentationRepository.save(readme);
+    }
+
     // Helper to strip .git and /
     private String normalizeUrl(String url) {
         if (url == null)

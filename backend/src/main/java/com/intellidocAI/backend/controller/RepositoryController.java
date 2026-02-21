@@ -99,6 +99,19 @@ public class RepositoryController {
                 .orElseThrow(() -> new ResourceNotFoundException("README not found for repository: " + repositoryId));
     }
 
+    // Update the generated README content (Edit feature)
+    @PutMapping("/{repositoryId}/readme")
+    public ResponseEntity<?> updateRepositoryReadme(
+            @PathVariable String repositoryId,
+            @RequestBody Map<String, String> payload) {
+        String content = payload.get("content");
+        if (content == null) {
+            throw new IllegalArgumentException("Request must include 'content'.");
+        }
+        Documentation updated = repositoryService.updateReadmeContent(repositoryId, content);
+        return ResponseEntity.ok(updated);
+    }
+
     // Delete Repository (ownership verified in service layer)
     @DeleteMapping("/{repositoryId}")
     public ResponseEntity<?> deleteRepository(@PathVariable String repositoryId) {
