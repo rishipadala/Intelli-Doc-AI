@@ -48,11 +48,20 @@ public class SecurityConfig {
         return authConfig.getAuthenticationManager();
     }
 
-    // 1. CORS Filter (Keep this exactly as is)
+    // 1. CORS Filter — origins configurable via env var for prod
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:8081", "http://localhost:5173", "http://localhost:3000"));
+
+        String allowedOrigins = System.getenv("CORS_ALLOWED_ORIGINS");
+        if (allowedOrigins != null && !allowedOrigins.isEmpty()) {
+            config.setAllowedOrigins(List.of(allowedOrigins.split(",")));
+        } else {
+            // Default: localhost for development
+            config.setAllowedOrigins(
+                    List.of("http://localhost:8081", "http://localhost:5173", "http://localhost:3000"));
+        }
+
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
