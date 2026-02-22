@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -26,7 +26,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Don't redirect on 401 for auth endpoints (login/signup) — let the form handle the error
+    const isAuthRequest = error.config?.url?.startsWith('/auth');
+    if (error.response?.status === 401 && !isAuthRequest) {
       useAuthStore.getState().logout();
       window.location.href = '/auth';
     }
@@ -41,6 +43,9 @@ export const authAPI = {
 
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
+
+  githubLogin: (code: string) =>
+    api.post('/auth/github', { code }),
 
   getMe: () => api.get('/users/me'),
 };
@@ -70,4 +75,10 @@ export const repoAPI = {
 
   updateReadme: (id: string, content: string) =>
     api.put(`/repositories/${id}/readme`, { content }),
+
+  searchDocs: (query: string) =>
+    api.get('/repositories/search', { params: { q: query } }),
+
+  getStats: () =>
+    api.get('/repositories/stats'),
 };

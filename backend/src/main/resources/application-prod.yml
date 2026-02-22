@@ -18,7 +18,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         # Crucial: Allow deserializing your specific DTOs
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "com.intellidocAI.backend.dto"
         spring.json.value.default.type: "com.intellidocAI.backend.dto.RepositoryProcessingRequest"
 
     # --- MAIN KAFKA PROPERTIES (including Security) ---
@@ -51,3 +51,14 @@ app:
 
 server:
   port: 8080
+
+# GitHub OAuth
+github:
+  client:
+    id: ${GITHUB_CLIENT_ID}
+    secret: ${GITHUB_CLIENT_SECRET}
+
+# AI Service URL
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}

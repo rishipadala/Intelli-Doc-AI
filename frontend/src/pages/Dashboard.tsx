@@ -5,12 +5,26 @@ import { Navbar } from '@/components/Navbar';
 import { RepoCard } from '@/components/RepoCard';
 import { RepoCardSkeleton } from '@/components/RepoCardSkeleton';
 import { AddRepoDialog } from '@/components/AddRepoDialog';
+import { DashboardStats } from '@/components/DashboardStats';
 import { GitBranch, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDashboardWebSocket } from '@/hooks/useDashboardWebSocket';
+
+interface StatsData {
+  totalRepos: number;
+  analyzedRepos: number;
+  totalFilesDocumented: number;
+  lastAnalysisAt: string | null;
+}
 
 export default function Dashboard() {
   const { repositories, setRepositories } = useRepoStore();
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Single shared WebSocket for all active repos on the dashboard
+  useDashboardWebSocket(repositories);
 
   useEffect(() => {
     const fetchRepos = async () => {
@@ -24,13 +38,25 @@ export default function Dashboard() {
       }
     };
 
+    const fetchStats = async () => {
+      try {
+        const response = await repoAPI.getStats();
+        setStats(response.data);
+      } catch (error: any) {
+        console.error('Failed to fetch stats:', error);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
     fetchRepos();
+    fetchStats();
   }, [setRepositories]);
 
   return (
     <div className="min-h-screen gradient-mesh">
       <Navbar />
-      
+
       <main className="container mx-auto px-4 pt-24 pb-12">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 animate-fade-in">
@@ -40,6 +66,11 @@ export default function Dashboard() {
           </div>
           <AddRepoDialog />
         </div>
+
+        {/* Dashboard Stats — only show when user has repos */}
+        {(!loading && repositories.length > 0) && (
+          <DashboardStats stats={stats} loading={statsLoading} />
+        )}
 
         {/* Repository Grid */}
         {loading ? (
@@ -86,3 +117,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

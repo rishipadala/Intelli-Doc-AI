@@ -1,11 +1,9 @@
 import { useNavigate } from 'react-router-dom';
-import { Repository, useRepoStore } from '@/stores/repoStore';
-import { repoAPI } from '@/lib/api';
+import { Repository } from '@/stores/repoStore';
 import { StatusBadge } from './StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
 import { GitBranch, ExternalLink, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useRepoWebSocket } from '@/hooks/useRepoWebSocket'; // <--- 1. Import Hook
 
 // Extend the type locally to tell TypeScript that lastAnalyzedAt exists
 interface ExtendedRepository extends Repository {
@@ -18,16 +16,6 @@ interface RepoCardProps {
 
 export const RepoCard = ({ repo }: RepoCardProps) => {
   const navigate = useNavigate();
-  // 2. We no longer need startPolling/stopPolling from the store
-  const { updateRepository } = useRepoStore();
-
-  // 3. 🔥 WEB SOCKET HOOK
-  // This replaces the entire polling useEffect
-  useRepoWebSocket(repo.id, (newStatus) => {
-    if (newStatus !== repo.status) {
-      updateRepository(repo.id, { status: newStatus as any });
-    }
-  });
 
   // Safe Date Parsing Function
   const getRelativeTime = (dateString?: string | null) => {
@@ -43,12 +31,12 @@ export const RepoCard = ({ repo }: RepoCardProps) => {
   };
 
   const repoName = repo.url.split('/').slice(-2).join('/').replace('.git', '');
-  
+
   // Logic to decide if the badge should show a spinner
   const isActiveState = ['QUEUED', 'PROCESSING', 'ANALYZING_CODE', 'GENERATING_README'].includes(repo.status);
 
   return (
-    <Card 
+    <Card
       className="glass group cursor-pointer transition-all duration-300 hover:neon-glow-sm hover:border-accent/50"
       onClick={() => navigate(`/repo/${repo.id}`)}
     >
@@ -72,7 +60,6 @@ export const RepoCard = ({ repo }: RepoCardProps) => {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {/* 4. Pass isActiveState directly instead of checking store polling */}
             <StatusBadge status={repo.status} isPolling={isActiveState} />
             <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>

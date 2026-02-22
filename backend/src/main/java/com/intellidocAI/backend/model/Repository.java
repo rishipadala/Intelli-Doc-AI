@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
 
@@ -19,9 +20,11 @@ public class Repository {
     private String id;
     private String name;
     private String url;
+    @Indexed
     private String userId; // Links to the User who added it
     private String localPath; // Path where it's cloned on the server
-    private String status;  // <-- This Line helps to display "status" of our job (e.g., "PENDING", "PROCESSING", "COMPLETED")
+    private String status; // <-- This Line helps to display "status" of our job (e.g., "PENDING",
+                           // "PROCESSING", "COMPLETED")
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime lastAnalyzedAt;
 

@@ -3,7 +3,7 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useProgressLogStore } from '@/stores/progressLogStore';
 
-const WS_URL = 'http://localhost:8080/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws';
 
 export const useRepoWebSocket = (repoId: string | undefined, onStatusUpdate: (status: string) => void) => {
   const clientRef = useRef<Client | null>(null);

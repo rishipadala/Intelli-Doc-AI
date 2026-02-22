@@ -2,6 +2,8 @@ package com.intellidocAI.backend.service;
 
 import com.intellidocAI.backend.config.KafkaTopicConfig;
 import com.intellidocAI.backend.dto.RepositoryProcessingRequest;
+import com.intellidocAI.backend.dto.DashboardStatsDTO;
+import com.intellidocAI.backend.dto.SearchResultDTO;
 import com.intellidocAI.backend.exception.DuplicateResourceException;
 import com.intellidocAI.backend.exception.ForbiddenAccessException;
 import com.intellidocAI.backend.exception.ResourceNotFoundException;
@@ -12,14 +14,14 @@ import com.intellidocAI.backend.repository.RepositoryRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Sort;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -165,4 +167,92 @@ public class RepositoryService {
         log.info("Deleted repository: {}", repository.getName());
     }
 
+    // 🔍 SEARCH: Full-text search across all user's documentation
+    public List<SearchResultDTO> searchDocumentation(String query, String userId) {
+        if (query == null || query.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 1. Get all repos owned by this user → build a lookup map
+        List<Repository> userRepos = repositoryRepository.findByUserId(userId);
+        Map<String, String> repoIdToName = userRepos.stream()
+                .collect(Collectors.toMap(Repository::getId, Repository::getName));
+        Set<String> userRepoIds = repoIdToName.keySet();
+
+        // 2. Run MongoDB text search (sorted by text score descending)
+        Sort sortByScore = Sort.by(Sort.Order.desc("score"));
+        List<Documentation> allResults = documentationRepository.searchByText(query.trim(), sortByScore);
+
+        // 3. Filter to only user's repos, map to DTO, cap at 50
+        String queryLower = query.trim().toLowerCase();
+        return allResults.stream()
+                .filter(doc -> userRepoIds.contains(doc.getRepositoryId()))
+                .limit(50)
+                .map(doc -> SearchResultDTO.builder()
+                        .documentationId(doc.getId())
+                        .repositoryId(doc.getRepositoryId())
+                        .repositoryName(repoIdToName.getOrDefault(doc.getRepositoryId(), "Unknown"))
+                        .filePath(doc.getFilePath())
+                        .snippet(extractSnippet(doc.getContent(), queryLower, 200))
+                        .score(0.0) // Score from $text is available via $meta, simplified here
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Extract a snippet of ~maxLen chars around the first occurrence of the query.
+     */
+    private String extractSnippet(String content, String query, int maxLen) {
+        if (content == null || content.isEmpty())
+            return "";
+
+        String contentLower = content.toLowerCase();
+        int idx = contentLower.indexOf(query);
+
+        if (idx == -1) {
+            // Query not found literally (MongoDB tokenizes differently) — return start
+            return content.substring(0, Math.min(content.length(), maxLen)) + (content.length() > maxLen ? "..." : "");
+        }
+
+        // Center the snippet around the match
+        int start = Math.max(0, idx - maxLen / 3);
+        int end = Math.min(content.length(), start + maxLen);
+
+        String snippet = content.substring(start, end);
+        if (start > 0)
+            snippet = "..." + snippet;
+        if (end < content.length())
+            snippet = snippet + "...";
+
+        return snippet;
+    }
+
+    // 📊 DASHBOARD STATS: Aggregate stats for the user's dashboard
+    public DashboardStatsDTO getDashboardStats(String userId) {
+        List<Repository> userRepos = repositoryRepository.findByUserId(userId);
+
+        int totalRepos = userRepos.size();
+        int analyzedRepos = (int) userRepos.stream()
+                .filter(r -> "ANALYSIS_COMPLETED".equals(r.getStatus()) || "COMPLETED".equals(r.getStatus()))
+                .count();
+
+        // Count total documented files across all user repos
+        List<String> repoIds = userRepos.stream().map(Repository::getId).collect(Collectors.toList());
+        long totalFiles = repoIds.isEmpty() ? 0 : documentationRepository.countByRepositoryIdIn(repoIds);
+
+        // Find the most recent analysis timestamp
+        String lastAnalysis = userRepos.stream()
+                .map(Repository::getLastAnalyzedAt)
+                .filter(Objects::nonNull)
+                .max(java.time.LocalDateTime::compareTo)
+                .map(Object::toString)
+                .orElse(null);
+
+        return DashboardStatsDTO.builder()
+                .totalRepos(totalRepos)
+                .analyzedRepos(analyzedRepos)
+                .totalFilesDocumented(totalFiles)
+                .lastAnalysisAt(lastAnalysis)
+                .build();
+    }
 }

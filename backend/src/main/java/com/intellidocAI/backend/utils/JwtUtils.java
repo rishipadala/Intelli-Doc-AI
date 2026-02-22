@@ -2,6 +2,7 @@ package com.intellidocAI.backend.utils;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +10,7 @@ import javax.crypto.SecretKey;
 import java.security.Key;
 import java.util.Date;
 
+@Slf4j
 @Component
 public class JwtUtils {
 
@@ -63,13 +65,13 @@ public class JwtUtils {
                     .parseSignedClaims(authToken);
             return true;
         } catch (SecurityException | MalformedJwtException e) {
-            System.err.println("Invalid JWT signature: " + e.getMessage());
+            log.warn("Invalid JWT signature: {}", e.getMessage());
         } catch (ExpiredJwtException e) {
-            System.err.println("JWT token is expired: " + e.getMessage());
+            log.warn("JWT token is expired: {}", e.getMessage());
         } catch (UnsupportedJwtException e) {
-            System.err.println("JWT token is unsupported: " + e.getMessage());
+            log.warn("JWT token is unsupported: {}", e.getMessage());
         } catch (IllegalArgumentException e) {
-            System.err.println("JWT claims string is empty: " + e.getMessage());
+            log.warn("JWT claims string is empty: {}", e.getMessage());
         }
         return false;
     }

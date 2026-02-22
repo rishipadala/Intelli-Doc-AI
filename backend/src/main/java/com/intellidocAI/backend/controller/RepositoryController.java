@@ -1,6 +1,8 @@
 package com.intellidocAI.backend.controller;
 
+import com.intellidocAI.backend.dto.DashboardStatsDTO;
 import com.intellidocAI.backend.dto.RepositoryProcessingRequest;
+import com.intellidocAI.backend.dto.SearchResultDTO;
 import com.intellidocAI.backend.exception.ResourceNotFoundException;
 import com.intellidocAI.backend.model.Documentation;
 import com.intellidocAI.backend.model.Repository;
@@ -110,6 +112,22 @@ public class RepositoryController {
         }
         Documentation updated = repositoryService.updateReadmeContent(repositoryId, content);
         return ResponseEntity.ok(updated);
+    }
+
+    // 📊 Dashboard statistics for the current user
+    @GetMapping("/stats")
+    public ResponseEntity<DashboardStatsDTO> getDashboardStats() {
+        User currentUser = getCurrentUser();
+        DashboardStatsDTO stats = repositoryService.getDashboardStats(currentUser.getId());
+        return ResponseEntity.ok(stats);
+    }
+
+    // 🔍 Search across all user's documentation
+    @GetMapping("/search")
+    public ResponseEntity<List<SearchResultDTO>> searchDocumentation(@RequestParam("q") String query) {
+        User currentUser = getCurrentUser();
+        List<SearchResultDTO> results = repositoryService.searchDocumentation(query, currentUser.getId());
+        return ResponseEntity.ok(results);
     }
 
     // Delete Repository (ownership verified in service layer)

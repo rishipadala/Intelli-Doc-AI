@@ -46,7 +46,6 @@ public class UserService {
                 .map(userMapper::toDto);
     }
 
-
     // Get User By Email
     public Optional<UserDTO> getUserByEmail(String email) {
         return userRepository.findByEmail(email)
@@ -66,6 +65,12 @@ public class UserService {
         userRepository.deleteById(id);
     }
 
+    /**
+     * Save a user entity directly without re-hashing the password.
+     * Used when the password field has already been handled (e.g., during profile
+     * updates).
+     */
+    public User saveUserDirectly(User user) {
+        return userRepository.save(user);
+    }
 }
-
-

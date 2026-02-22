@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,6 +22,9 @@ public class UserController {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     /**
      * Get Current Logged-in User Profile.
@@ -72,16 +76,21 @@ public class UserController {
             throw new ForbiddenAccessException("Access Denied: You can only update your own profile.");
         }
 
-        // 4. Proceed with update
-        targetUser.setUsername(updatedUserData.getUsername());
-        targetUser.setEmail(updatedUserData.getEmail());
-
-        // Only update password if a new one is provided and not empty
-        if (updatedUserData.getPassword() != null && !updatedUserData.getPassword().isEmpty()) {
-            // ideally, you should re-hash the password here using PasswordEncoder
+        // 4. Update profile fields
+        if (updatedUserData.getUsername() != null && !updatedUserData.getUsername().isBlank()) {
+            targetUser.setUsername(updatedUserData.getUsername());
+        }
+        if (updatedUserData.getEmail() != null && !updatedUserData.getEmail().isBlank()) {
+            targetUser.setEmail(updatedUserData.getEmail());
         }
 
-        User savedUser = userService.saveUser(targetUser);
+        // 5. Hash and update password ONLY if a new one is provided
+        if (updatedUserData.getPassword() != null && !updatedUserData.getPassword().isBlank()) {
+            targetUser.setPassword(passwordEncoder.encode(updatedUserData.getPassword()));
+        }
+
+        // 6. Save directly (bypass saveUser to avoid double-hashing)
+        User savedUser = userService.saveUserDirectly(targetUser);
         return ResponseEntity.ok(userMapper.toDto(savedUser));
     }
 

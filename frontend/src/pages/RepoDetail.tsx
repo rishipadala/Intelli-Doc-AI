@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useRepoStore } from '@/stores/repoStore';
 import { repoAPI } from '@/lib/api';
 import { Navbar } from '@/components/Navbar';
@@ -19,7 +19,9 @@ import {
   Copy,
   Download,
   Trash2,
-  Pencil
+  Pencil,
+  PanelLeftOpen,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRepoWebSocket } from '@/hooks/useRepoWebSocket';
@@ -28,6 +30,7 @@ import { useProgressLogStore } from '@/stores/progressLogStore';
 export default function RepoDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { currentRepo, setCurrentRepo, updateRepository } = useRepoStore();
 
   const [loading, setLoading] = useState(true);
@@ -43,6 +46,7 @@ export default function RepoDetail() {
   const [showLogs, setShowLogs] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [savingReadme, setSavingReadme] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { addLog, clearLogs } = useProgressLogStore();
   const rawLogs = useProgressLogStore((s) => s.logs[id || '']);
@@ -165,6 +169,18 @@ export default function RepoDetail() {
         }
       }
 
+      // Check for ?file= query param (from search deep-link)
+      const targetFile = searchParams.get('file');
+      if (targetFile) {
+        const targetDoc = normalizedDocs.find((d: any) => d.filePath === targetFile);
+        if (targetDoc) {
+          selectFile(targetDoc.filePath, normalizedDocs);
+          // Clear the query param so it doesn't re-trigger on re-fetches
+          setSearchParams({}, { replace: true });
+          return;
+        }
+      }
+
       if (!activeFile && normalizedDocs.length > 0) {
         selectFile(normalizedDocs[0].filePath, normalizedDocs);
       } else if (activeFile) {
@@ -182,6 +198,8 @@ export default function RepoDetail() {
     setActiveFile(path);
     const doc = currentDocs.find((d: any) => d.filePath === path);
     if (doc) setActiveContent(doc.content);
+    // Auto-close sidebar on mobile after file select
+    setSidebarOpen(false);
   };
 
   // 5. Actions (Unchanged)
@@ -272,22 +290,33 @@ export default function RepoDetail() {
     <div className="min-h-screen gradient-mesh flex flex-col">
       <Navbar />
 
-      <main className="flex-1 container mx-auto px-4 pt-24 pb-8 flex flex-col h-[calc(100vh-20px)]">
+      <main className="flex-1 container mx-auto px-2 sm:px-4 pt-24 pb-8 flex flex-col h-[calc(100vh-20px)]">
 
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4 md:mb-6 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="shrink-0">
               <ArrowLeft className="h-5 w-5" />
             </Button>
+
+            {/* Mobile sidebar toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden shrink-0"
+              title="Open file list"
+            >
+              <PanelLeftOpen className="h-5 w-5" />
+            </Button>
+
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <GitBranch className="h-5 w-5 text-accent shrink-0" />
-                <h1 className="text-xl font-bold truncate">{currentRepo.name}</h1>
+                <h1 className="text-lg sm:text-xl font-bold truncate">{currentRepo.name}</h1>
               </div>
               <p className="text-xs text-muted-foreground truncate">{currentRepo.url}</p>
             </div>
-            {/* Pass isActive status directly to badge */}
             <StatusBadge
               status={currentRepo.status}
               isPolling={['QUEUED', 'PROCESSING', 'ANALYZING_CODE', 'GENERATING_README'].includes(currentRepo.status)}
@@ -298,11 +327,14 @@ export default function RepoDetail() {
             {['ANALYSIS_COMPLETED', 'COMPLETED'].includes(currentRepo.status) && (
               <Button
                 variant={currentRepo.status === 'COMPLETED' ? "outline" : "neon"}
+                size="sm"
                 onClick={handleGenerateReadme}
                 disabled={generating || currentRepo.status === 'GENERATING_README'}
+                className="text-xs sm:text-sm"
               >
-                {generating ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                {currentRepo.status === 'COMPLETED' ? 'Regenerate Readme' : 'Generate Master README'}
+                {generating ? <Loader2 className="animate-spin mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> : <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />}
+                <span className="hidden sm:inline">{currentRepo.status === 'COMPLETED' ? 'Regenerate Readme' : 'Generate Master README'}</span>
+                <span className="sm:hidden">{currentRepo.status === 'COMPLETED' ? 'Regenerate' : 'Generate README'}</span>
               </Button>
             )}
 
@@ -319,14 +351,35 @@ export default function RepoDetail() {
         </div>
 
         {/* --- MAIN IDE LAYOUT --- */}
-        <div className="flex-1 flex gap-0 overflow-hidden glass rounded-xl border border-white/10 shadow-2xl">
+        <div className="flex-1 flex gap-0 overflow-hidden glass rounded-xl border border-white/10 shadow-2xl relative">
+
+          {/* MOBILE SIDEBAR BACKDROP */}
+          {sidebarOpen && (
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-fade-in"
+              style={{ animationDuration: '150ms' }}
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
 
           {/* LEFT SIDEBAR: FILE LIST */}
-          <div className="w-72 bg-black/20 border-r border-white/10 flex flex-col">
-            <div className="p-4 border-b border-white/10">
+          <div className={`
+            fixed inset-y-0 left-0 z-50 w-72 bg-card border-r border-white/10 flex flex-col
+            transition-transform duration-300 ease-out
+            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+            md:relative md:inset-auto md:z-auto md:translate-x-0 md:bg-black/20
+          `}>
+            <div className="p-4 border-b border-white/10 flex items-center justify-between">
               <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                 <FileText className="h-3 w-3" /> Project Files
               </h3>
+              {/* Close button — mobile only */}
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="md:hidden p-1 rounded-md hover:bg-white/10 text-muted-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -339,7 +392,7 @@ export default function RepoDetail() {
                     onClick={() => selectFile(file)}
                     className={`w-full text-left px-3 py-2.5 rounded-md text-sm truncate transition-all flex items-center gap-2 ${isActive
                       ? 'bg-accent/20 text-accent border border-accent/20 shadow-[0_0_10px_rgba(var(--neon-cyan),0.2)]'
-                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                      : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'
                       }`}
                   >
                     {isReadme ? <Sparkles className="h-4 w-4 text-yellow-400" /> : <Code2 className="h-4 w-4 opacity-70" />}
@@ -369,14 +422,14 @@ export default function RepoDetail() {
               ) : (
                 /* Normal Preview Mode */
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  <div className="max-w-4xl mx-auto p-8">
-                    <div className="mb-6 pb-4 border-b border-white/10 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {activeFile.includes('README') ? <Book className="h-6 w-6 text-yellow-400" /> : <Code2 className="h-6 w-6 text-accent" />}
-                        <h2 className="text-2xl font-bold text-white truncate max-w-md">{activeFile}</h2>
+                  <div className="max-w-4xl mx-auto p-4 sm:p-6 md:p-8">
+                    <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {activeFile.includes('README') ? <Book className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400 shrink-0" /> : <Code2 className="h-5 w-5 sm:h-6 sm:w-6 text-accent shrink-0" />}
+                        <h2 className="text-lg sm:text-2xl font-bold text-foreground truncate">{activeFile}</h2>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 shrink-0">
                         {activeFile.includes('README_GENERATED') && currentRepo.status === 'COMPLETED' && (
                           <Button
                             variant="outline"
@@ -384,14 +437,17 @@ export default function RepoDetail() {
                             onClick={() => setIsEditing(true)}
                             className="border-accent/30 text-accent hover:bg-accent/10 hover:text-accent"
                           >
-                            <Pencil className="h-4 w-4 mr-2" /> Edit
+                            <Pencil className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Edit</span>
                           </Button>
                         )}
                         <Button variant="outline" size="sm" onClick={copyContent}>
-                          <Copy className="h-4 w-4 mr-2" /> Copy
+                          <Copy className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Copy</span>
                         </Button>
                         <Button variant="outline" size="sm" onClick={downloadContent}>
-                          <Download className="h-4 w-4 mr-2" /> Download
+                          <Download className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Download</span>
                         </Button>
                       </div>
                     </div>

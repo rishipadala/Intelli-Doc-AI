@@ -1,0 +1,5 @@
+fastapi # //Use for building API 
+uvicorn # //Use for running API 
+google-generativeai # //Use for AI model 
+python-dotenv # //Use for environment variables 
+pydantic # //Use for type checking and data validation 
