@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 
-export type RepoStatus = 
-  | 'QUEUED' 
-  | 'PROCESSING' 
-  | 'ANALYZING_CODE' 
-  | 'ANALYSIS_COMPLETED' 
-  | 'GENERATING_README' 
-  | 'COMPLETED' 
+export type RepoStatus =
+  | 'QUEUED'
+  | 'PROCESSING'
+  | 'ANALYZING_CODE'
+  | 'ANALYSIS_COMPLETED'
+  | 'GENERATING_README'
+  | 'COMPLETED'
   | 'FAILED';
 
 export interface Repository {
@@ -14,6 +14,7 @@ export interface Repository {
   url: string;
   name: string;
   status: RepoStatus;
+  lastAnalyzedAt?: string | null;
   fileTree?: string;
   createdAt: string;
   updatedAt: string;
@@ -39,22 +40,22 @@ interface RepoState {
 export const useRepoStore = create<RepoState>((set, get) => ({
   repositories: [],
   currentRepo: null,
-  
+
   setRepositories: (repos) => set({ repositories: repos }),
-  
-  addRepository: (repo) => set((state) => ({ 
-    repositories: [repo, ...state.repositories] 
+
+  addRepository: (repo) => set((state) => ({
+    repositories: [repo, ...state.repositories]
   })),
-  
+
   updateRepository: (id, updates) => set((state) => ({
-    repositories: state.repositories.map((r) => 
+    repositories: state.repositories.map((r) =>
       r.id === id ? { ...r, ...updates } : r
     ),
-    currentRepo: state.currentRepo?.id === id 
-      ? { ...state.currentRepo, ...updates } 
+    currentRepo: state.currentRepo?.id === id
+      ? { ...state.currentRepo, ...updates }
       : state.currentRepo,
   })),
-  
+
   setCurrentRepo: (repo) => set({ currentRepo: repo }),
-  
+
 }));

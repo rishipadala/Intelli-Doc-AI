@@ -5,13 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { GitBranch, ExternalLink, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
-// Extend the type locally to tell TypeScript that lastAnalyzedAt exists
-interface ExtendedRepository extends Repository {
-  lastAnalyzedAt?: string | null;
-}
-
 interface RepoCardProps {
-  repo: ExtendedRepository;
+  repo: Repository;
 }
 
 export const RepoCard = ({ repo }: RepoCardProps) => {

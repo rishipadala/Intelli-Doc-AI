@@ -74,7 +74,11 @@ export const useDashboardWebSocket = (repositories: Repository[]) => {
       if (message.body) {
         const payload = JSON.parse(message.body);
         if (payload.type === 'STATUS_UPDATE' || payload.status) {
-          updateRepository(repoId, { status: payload.status });
+          const update: Partial<Repository> = { status: payload.status };
+          if (payload.lastAnalyzedAt) {
+            update.lastAnalyzedAt = payload.lastAnalyzedAt;
+          }
+          updateRepository(repoId, update);
         }
       }
     });
