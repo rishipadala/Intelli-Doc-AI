@@ -46,13 +46,13 @@ export const Navbar = () => {
               </span>
             </Link>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {isAuthenticated ? (
                 <>
                   {/* Search Button */}
                   <button
                     onClick={() => setSearchOpen(true)}
-                    className="flex items-center gap-2 text-muted-foreground px-3 py-1.5 rounded-lg transition-all duration-300 hover:bg-card/50 hover:text-accent border border-transparent hover:border-accent/20 cursor-pointer group"
+                    className="flex items-center gap-2 text-muted-foreground px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-300 hover:bg-card/50 hover:text-accent border border-transparent hover:border-accent/20 cursor-pointer group"
                     title="Search documentation (Ctrl+K)"
                   >
                     <Search className="h-4 w-4 shrink-0 transition-all duration-300 group-hover:text-accent" />
@@ -66,7 +66,7 @@ export const Navbar = () => {
 
                   <Link
                     to="/profile"
-                    className="flex items-center gap-2 text-muted-foreground px-3 py-1.5 rounded-lg transition-all duration-300 hover:bg-card/50 hover:text-accent cursor-pointer"
+                    className="flex items-center gap-2 text-muted-foreground px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-300 hover:bg-card/50 hover:text-accent cursor-pointer"
                     title="Profile Settings"
                   >
                     <User className="h-4 w-4 flex-shrink-0 transition-transform duration-300" />
@@ -85,11 +85,14 @@ export const Navbar = () => {
                   </Button>
                 </>
               ) : (
-                <Link to="/auth" className="transition-transform duration-300 hover:scale-105 active:scale-95">
-                  <Button variant="neon" size="sm" className="transition-all duration-300">
-                    Get Started
-                  </Button>
-                </Link>
+                <>
+                  <ThemeToggle />
+                  <Link to="/auth" className="transition-transform duration-300 hover:scale-105 active:scale-95">
+                    <Button variant="neon" size="sm" className="transition-all duration-300">
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
               )}
             </div>
           </div>

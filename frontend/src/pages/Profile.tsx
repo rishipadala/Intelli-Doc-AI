@@ -77,15 +77,15 @@ export default function Profile() {
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
-                        <h1 className="text-3xl font-bold text-foreground">Profile Settings</h1>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Profile Settings</h1>
                         <p className="text-muted-foreground text-sm">Manage your account details</p>
                     </div>
                 </div>
 
                 {/* Profile Card */}
-                <div className="glass-strong rounded-2xl p-8 neon-border animate-fade-in" style={{ animationDelay: '100ms' }}>
+                <div className="glass-strong rounded-2xl p-5 sm:p-8 neon-border animate-fade-in" style={{ animationDelay: '100ms' }}>
                     {/* Avatar Section */}
-                    <div className="flex items-center gap-4 mb-8 pb-6 border-b border-white/10">
+                    <div className="flex items-center gap-3 sm:gap-4 mb-6 sm:mb-8 pb-4 sm:pb-6 border-b border-white/10">
                         <div className="h-16 w-16 rounded-full bg-accent/20 flex items-center justify-center ring-2 ring-accent/30">
                             <span className="text-2xl font-bold text-accent">
                                 {user.username.charAt(0).toUpperCase()}

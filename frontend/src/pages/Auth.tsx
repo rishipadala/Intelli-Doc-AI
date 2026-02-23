@@ -100,22 +100,22 @@ export default function Auth() {
         </Link>
       </div>
 
-      <div className="flex items-center justify-center min-h-screen px-4 py-12">
+      <div className="flex items-center justify-center min-h-screen px-3 sm:px-4 py-12">
         <div className="w-full max-w-md animate-fade-in relative z-10">
           {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center gap-3 mb-4">
+          <div className="text-center mb-6 sm:mb-8">
+            <div className="inline-flex items-center justify-center gap-2 sm:gap-3 mb-4">
               <div className="relative">
-                <FileCode className="h-12 w-12 text-accent" />
+                <FileCode className="h-10 w-10 sm:h-12 sm:w-12 text-accent" />
                 <div className="absolute inset-0 blur-xl bg-accent/40" />
               </div>
-              <span className="text-3xl font-bold text-gradient">Intelli-Doc AI</span>
+              <span className="text-2xl sm:text-3xl font-bold text-gradient">Intelli-Doc AI</span>
             </div>
-            <p className="text-muted-foreground">AI-Powered Code Documentation</p>
+            <p className="text-muted-foreground text-sm sm:text-base">AI-Powered Code Documentation</p>
           </div>
 
           {/* Auth Card */}
-          <div className="glass-strong rounded-2xl p-8 neon-border">
+          <div className="glass-strong rounded-2xl p-5 sm:p-8 neon-border">
             <div className="flex mb-8">
               <button
                 type="button"
