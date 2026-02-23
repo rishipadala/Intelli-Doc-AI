@@ -16,7 +16,9 @@ export const RepoCard = ({ repo }: RepoCardProps) => {
   const getRelativeTime = (dateString?: string | null) => {
     if (!dateString) return 'Just now';
     try {
-      const date = new Date(dateString);
+      // Backend sends UTC time without 'Z' suffix — append it so JS parses as UTC
+      const utcDate = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+      const date = new Date(utcDate);
       if (isNaN(date.getTime())) return 'Unknown date';
       return formatDistanceToNow(date, { addSuffix: true });
     } catch (error) {

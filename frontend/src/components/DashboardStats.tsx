@@ -52,7 +52,9 @@ export function DashboardStats({ stats, loading }: DashboardStatsProps) {
         if (key === 'lastAnalysisAt') {
             if (!stats.lastAnalysisAt) return 'Never';
             try {
-                return formatDistanceToNow(new Date(stats.lastAnalysisAt), { addSuffix: true });
+                // Backend sends UTC time without 'Z' suffix — append it so JS parses as UTC
+                const utcDate = stats.lastAnalysisAt.endsWith('Z') ? stats.lastAnalysisAt : stats.lastAnalysisAt + 'Z';
+                return formatDistanceToNow(new Date(utcDate), { addSuffix: true });
             } catch {
                 return 'Unknown';
             }
