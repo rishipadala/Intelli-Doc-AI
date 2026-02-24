@@ -59,4 +59,4 @@ env/
 *.suo
 *.ntvs*
 *.njsproj
-*.sln
+*.slnbackend/hf-deploy/
