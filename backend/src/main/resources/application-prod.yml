@@ -40,28 +40,16 @@ spring:
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
 
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enabled: true
-            required: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
-
 repo.clone.path: ${REPO_CLONE_PATH}
 
 app:
   jwtSecret: ${JWT_SECRET}
   jwtExpirationMs: 86400000
   otpExpirationMinutes: ${OTP_EXPIRATION_MINUTES:10}
+  brevo:
+    apiKey: ${BREVO_API_KEY}
+    senderEmail: ${BREVO_SENDER_EMAIL:intellidocai.helpdesk@gmail.com}
+    senderName: ${BREVO_SENDER_NAME:Intelli-Doc AI}
 
 
 server:

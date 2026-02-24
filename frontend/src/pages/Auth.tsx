@@ -17,9 +17,15 @@ export default function Auth() {
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
   const [otpEmail, setOtpEmail] = useState('');
+  const otpEmailRef = useRef('');
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [resendCooldown, setResendCooldown] = useState(0);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Keep ref in sync so memoized callbacks always get current email
+  useEffect(() => {
+    otpEmailRef.current = otpEmail;
+  }, [otpEmail]);
 
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
@@ -171,9 +177,10 @@ export default function Auth() {
   }, [otpDigits]);
 
   const handleVerifyOtp = async (data: OtpFormData) => {
+    const currentEmail = otpEmailRef.current;
     setLoading(true);
     try {
-      await authAPI.verifyOtp({ email: otpEmail, otp: data.otp });
+      await authAPI.verifyOtp({ email: currentEmail, otp: data.otp });
       toast.success('Email verified successfully! Please log in.');
       setMode('login');
       setOtpDigits(['', '', '', '', '', '']);
