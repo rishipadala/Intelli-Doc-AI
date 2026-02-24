@@ -68,7 +68,7 @@ public class DocumentationCacheService {
         String key = getArchitectCacheKey(projectContext);
         try {
             String json = objectMapper.writeValueAsString(selectedFiles);
-            redisTemplate.opsForValue().set(key, json, Duration.ofDays(2));
+            redisTemplate.opsForValue().set(key, json, Duration.ofDays(1));
         } catch (JsonProcessingException e) {
             logger.warn("Failed to cache architect response");
         }
@@ -86,7 +86,7 @@ public class DocumentationCacheService {
     public void cacheDoc(String fileContent, String documentation) {
         if (documentation == null || documentation.startsWith("Error:"))
             return;
-        redisTemplate.opsForValue().set(getDocCacheKey(fileContent), documentation, Duration.ofDays(2));
+        redisTemplate.opsForValue().set(getDocCacheKey(fileContent), documentation, Duration.ofDays(1));
     }
 
     // --- Readme Cache ---
@@ -102,6 +102,6 @@ public class DocumentationCacheService {
         if (readmeContent == null || readmeContent.startsWith("Error:"))
             return;
         redisTemplate.opsForValue().set(getReadmeCacheKey(projectStructure, summariesContext), readmeContent,
-                Duration.ofDays(2));
+                Duration.ofDays(1));
     }
 }

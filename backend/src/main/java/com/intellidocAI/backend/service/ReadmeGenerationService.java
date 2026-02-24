@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -66,6 +67,7 @@ public class ReadmeGenerationService {
                         "README cache hit — using previously generated version");
                 saveDocumentation(repository.getId(), "README_GENERATED.md", cachedReadme);
                 repository.setStatus("COMPLETED");
+                repository.setLastAnalyzedAt(LocalDateTime.now());
                 repositoryRepository.save(repository);
                 progressNotifier.sendLog(repository.getId(), "COMPLETE", "README generated successfully!");
                 progressNotifier.sendStatus(repository.getId(), "COMPLETED");
@@ -85,6 +87,7 @@ public class ReadmeGenerationService {
 
                 docCacheService.cacheReadme(projectStructure, summariesContext.toString(), readmeContent);
                 repository.setStatus("COMPLETED");
+                repository.setLastAnalyzedAt(LocalDateTime.now());
 
                 progressNotifier.sendLog(repository.getId(), "COMPLETE", "Master README generated successfully!");
                 progressNotifier.sendStatus(repository.getId(), "COMPLETED");

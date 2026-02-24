@@ -8,6 +8,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Document(collection = "users")
@@ -32,4 +33,10 @@ public class User {
     private String avatarUrl;
     @Builder.Default
     private String authProvider = "LOCAL"; // "LOCAL" or "GITHUB"
+
+    // Email OTP Verification fields
+    @Builder.Default
+    private boolean emailVerified = false;
+    private String emailOtp; // Stores the hashed OTP
+    private LocalDateTime otpExpiry;
 }

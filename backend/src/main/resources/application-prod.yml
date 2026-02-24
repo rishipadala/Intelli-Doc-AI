@@ -40,13 +40,28 @@ spring:
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
 
-
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enabled: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 repo.clone.path: ${REPO_CLONE_PATH}
 
 app:
   jwtSecret: ${JWT_SECRET}
   jwtExpirationMs: 86400000
+  otpExpirationMinutes: ${OTP_EXPIRATION_MINUTES:10}
 
 
 server:

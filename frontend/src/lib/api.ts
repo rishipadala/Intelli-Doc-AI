@@ -44,6 +44,12 @@ export const authAPI = {
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
 
+  verifyOtp: (data: { email: string; otp: string }) =>
+    api.post('/auth/verify-otp', data),
+
+  resendOtp: (data: { email: string }) =>
+    api.post('/auth/resend-otp', data),
+
   githubLogin: (code: string) =>
     api.post('/auth/github', { code }),
 

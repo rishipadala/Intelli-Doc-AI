@@ -30,6 +30,17 @@ export const signupSchema = z.object({
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type SignupFormData = z.infer<typeof signupSchema>;
 
+// --- OTP Schema ---
+
+export const otpSchema = z.object({
+    otp: z
+        .string()
+        .length(6, 'OTP must be exactly 6 digits.')
+        .regex(/^\d{6}$/, 'OTP must contain only digits.'),
+});
+
+export type OtpFormData = z.infer<typeof otpSchema>;
+
 // --- Repository Schemas ---
 
 export const repoUrlSchema = z.object({

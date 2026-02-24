@@ -41,6 +41,7 @@ public class ProgressNotifier {
     public void sendStatus(String repoId, String status) {
         messagingTemplate.convertAndSend("/topic/repo/" + repoId, Map.of(
                 "type", "STATUS_UPDATE",
-                "status", status));
+                "status", status,
+                "lastAnalyzedAt", LocalDateTime.now().toString()));
     }
 }
