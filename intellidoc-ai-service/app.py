@@ -3,7 +3,8 @@ import logging
 import json
 import time
 import threading
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from fastapi import FastAPI
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -35,25 +36,25 @@ if not API_KEYS:
 _key_lock = threading.Lock()
 _current_key_index = 0
 
-def get_model():
-    """Get a Gemini model configured with the next API key in rotation."""
+MODEL_NAME = "gemini-2.5-flash"
+
+def get_client():
+    """Get a Gemini client configured with the next API key in rotation."""
     global _current_key_index
     if not API_KEYS:
         return None
     with _key_lock:
         key = API_KEYS[_current_key_index % len(API_KEYS)]
         _current_key_index += 1
-    genai.configure(api_key=key)
-    return genai.GenerativeModel('gemini-2.5-flash')
+    return genai.Client(api_key=key)
 
-# Initialize first model for health checks
+# Initialize first client for health checks
 try:
-    genai.configure(api_key=API_KEYS[0])
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    client = genai.Client(api_key=API_KEYS[0])
     logging.info(f"Gemini 2.5 Flash initialized with {len(API_KEYS)} API key(s).")
 except Exception as e:
     logging.error(f"Error configuring Gemini: {e}")
-    model = None
+    client = None
 
 # ============================================================================================
 # ⏱️ PROACTIVE RATE LIMITER (Token Bucket per API key)
@@ -118,6 +119,19 @@ class BatchDocRequest(BaseModel):
     project_context: str
 
 # ============================================================================================
+# 🏥 ENDPOINT: Health Check (fixes 404 on GET /)
+# ============================================================================================
+@app.get("/")
+def health_check():
+    """Health check endpoint for Hugging Face Spaces and monitoring."""
+    return {
+        "status": "ok",
+        "service": "IntelliDoc AI",
+        "model": MODEL_NAME,
+        "api_keys_loaded": len(API_KEYS)
+    }
+
+# ============================================================================================
 # 📝 ENDPOINT: Single File Documentation (kept for backward compatibility)
 # ============================================================================================
 @app.post("/generate-docs")
@@ -133,8 +147,11 @@ def generate_docs(request: APIRequest):
     for attempt in range(max_retries):
         try:
             rate_limiter.wait_if_needed()
-            current_model = get_model()
-            response = current_model.generate_content(request.prompt)
+            current_client = get_client()
+            response = current_client.models.generate_content(
+                model=MODEL_NAME,
+                contents=request.prompt
+            )
             generated_text = response.text
             # Cleanup: Remove markdown code block wrappers while preserving content
             if generated_text.startswith("```"):
@@ -185,10 +202,11 @@ def generate_docs_batch(request: BatchDocRequest):
     for attempt in range(max_retries):
         try:
             rate_limiter.wait_if_needed()
-            current_model = get_model()
-            response = current_model.generate_content(
-                combined_prompt,
-                generation_config={"temperature": 0.3}
+            current_client = get_client()
+            response = current_client.models.generate_content(
+                model=MODEL_NAME,
+                contents=combined_prompt,
+                config=types.GenerateContentConfig(temperature=0.3)
             )
             
             raw_text = response.text.strip()
@@ -409,10 +427,14 @@ def select_important_files(request: SelectionRequest):
     for attempt in range(max_retries):
         try:
             rate_limiter.wait_if_needed()
-            current_model = get_model()
-            response = current_model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json", "temperature": 0.2}
+            current_client = get_client()
+            response = current_client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2
+                )
             )
             
             text_response = response.text.strip()
