@@ -168,9 +168,9 @@ def generate_docs(request: APIRequest):
             
         except Exception as e:
             error_str = str(e).lower()
-            is_rate_limit = "429" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str
+            is_retryable = "429" in error_str or "503" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str or "unavailable" in error_str or "overloaded" in error_str
             
-            if is_rate_limit and attempt < max_retries - 1:
+            if is_retryable and attempt < max_retries - 1:
                 wait_time = base_delay * (2 ** attempt)  # 8s, 16s, 32s, 64s
                 logging.warning(f"Rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
                 time.sleep(wait_time)
@@ -219,9 +219,9 @@ def generate_docs_batch(request: BatchDocRequest):
 
         except Exception as e:
             error_str = str(e).lower()
-            is_rate_limit = "429" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str
+            is_retryable = "429" in error_str or "503" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str or "unavailable" in error_str or "overloaded" in error_str
 
-            if is_rate_limit and attempt < max_retries - 1:
+            if is_retryable and attempt < max_retries - 1:
                 wait_time = base_delay * (2 ** attempt)
                 logging.warning(f"Batch rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
                 time.sleep(wait_time)
@@ -451,9 +451,9 @@ def select_important_files(request: SelectionRequest):
             
         except Exception as e:
             error_str = str(e).lower()
-            is_rate_limit = "429" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str
+            is_retryable = "429" in error_str or "503" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str or "unavailable" in error_str or "overloaded" in error_str
             
-            if is_rate_limit and attempt < max_retries - 1:
+            if is_retryable and attempt < max_retries - 1:
                 wait_time = base_delay * (2 ** attempt)
                 logging.warning(f"Architect rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
                 time.sleep(wait_time)
