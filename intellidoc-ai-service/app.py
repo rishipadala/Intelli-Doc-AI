@@ -2,6 +2,7 @@ import os
 import logging
 import json
 import time
+import random
 import threading
 from google import genai
 from google.genai import types
@@ -36,7 +37,8 @@ if not API_KEYS:
 _key_lock = threading.Lock()
 _current_key_index = 0
 
-MODEL_NAME = "gemini-2.5-flash"
+# Using gemini-2.5-flash-lite — stable, fast, no 503 capacity issues on free tier
+MODEL_NAME = "gemini-2.5-flash-lite"
 
 def get_client():
     """Get a Gemini client configured with the next API key in rotation."""
@@ -102,7 +104,44 @@ class RateLimiter:
             
             self._timestamps.append(now)
 
-rate_limiter = RateLimiter(rpm_limit=8, min_interval_seconds=7.0)
+# Tuned for 3 API keys × 5 RPM each = 15 RPM max. Using 12 RPM with 4s interval for safety.
+rate_limiter = RateLimiter(rpm_limit=12, min_interval_seconds=4.0)
+
+# ============================================================================================
+# 🔄 SMART RETRY (503 vs 429 aware)
+# ============================================================================================
+def smart_retry(api_call_fn, max_retries=5, label="API"):
+    """
+    On 503 (server overload): short delay + rotate key.
+    On 429 (rate limit): longer exponential backoff.
+    """
+    for attempt in range(max_retries):
+        try:
+            rate_limiter.wait_if_needed()
+            current_client = get_client()
+            return api_call_fn(current_client, MODEL_NAME)
+
+        except Exception as e:
+            error_str = str(e).lower()
+            is_503 = "503" in error_str or "unavailable" in error_str or "overloaded" in error_str
+            is_429 = "429" in error_str or "quota" in error_str or "rate" in error_str or "resource" in error_str
+
+            if not (is_503 or is_429) or attempt >= max_retries - 1:
+                logging.error(f"{label} failed (attempt {attempt + 1}/{max_retries}): {e}")
+                raise
+
+            if is_503:
+                wait_time = 3 * (attempt + 1) + random.uniform(0.5, 1.5)
+                logging.warning(f"{label}: 503 overload (attempt {attempt + 1}/{max_retries}). "
+                               f"Rotating key, retrying in {wait_time:.1f}s...")
+            else:
+                wait_time = 8 * (2 ** attempt) + random.uniform(1.0, 3.0)
+                logging.warning(f"{label}: 429 rate limited (attempt {attempt + 1}/{max_retries}). "
+                               f"Retrying in {wait_time:.1f}s...")
+
+            time.sleep(wait_time)
+
+            time.sleep(wait_time)
 
 # ============================================================================================
 # 📦 REQUEST MODELS
@@ -141,43 +180,32 @@ def generate_docs(request: APIRequest):
 
     logging.info("Received request to generate content from prompt.")
     
-    max_retries = 5
-    base_delay = 8  # seconds
-    
-    for attempt in range(max_retries):
-        try:
-            rate_limiter.wait_if_needed()
-            current_client = get_client()
-            response = current_client.models.generate_content(
-                model=MODEL_NAME,
+    try:
+        def call_fn(client, model):
+            response = client.models.generate_content(
+                model=model,
                 contents=request.prompt
             )
-            generated_text = response.text
-            # Cleanup: Remove markdown code block wrappers while preserving content
-            if generated_text.startswith("```"):
-                lines = generated_text.split('\n')
-                if lines and lines[0].strip().startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                generated_text = "\n".join(lines)
-            
-            generated_text = generated_text.strip()
-            logging.info("Content generated successfully by Gemini.")
-            return {"documentation": generated_text}
-            
-        except Exception as e:
-            error_str = str(e).lower()
-            is_retryable = "429" in error_str or "503" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str or "unavailable" in error_str or "overloaded" in error_str
-            
-            if is_retryable and attempt < max_retries - 1:
-                wait_time = base_delay * (2 ** attempt)  # 8s, 16s, 32s, 64s
-                logging.warning(f"Rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-                continue
-            
-            logging.error(f"Error during Gemini API call (attempt {attempt + 1}): {e}")
-            return {"error": f"Failed to generate documentation: {e}"}   
+            return response
+        
+        response = smart_retry(call_fn, label="SingleDoc")
+        generated_text = response.text
+        # Cleanup: Remove markdown code block wrappers while preserving content
+        if generated_text.startswith("```"):
+            lines = generated_text.split('\n')
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            generated_text = "\n".join(lines)
+        
+        generated_text = generated_text.strip()
+        logging.info("Content generated successfully by Gemini.")
+        return {"documentation": generated_text}
+        
+    except Exception as e:
+        logging.error(f"Error during Gemini API call: {e}")
+        return {"error": f"Failed to generate documentation: {e}"}   
 
 # ============================================================================================
 # 📦 ENDPOINT: Batch File Documentation (NEW - reduces API calls by 60-70%)
@@ -195,40 +223,27 @@ def generate_docs_batch(request: BatchDocRequest):
 
     # Build a combined prompt for all files in this batch
     combined_prompt = build_batch_prompt(request.files, request.project_context)
-    
-    max_retries = 5
-    base_delay = 8
 
-    for attempt in range(max_retries):
-        try:
-            rate_limiter.wait_if_needed()
-            current_client = get_client()
-            response = current_client.models.generate_content(
-                model=MODEL_NAME,
+    try:
+        def call_fn(client, model):
+            return client.models.generate_content(
+                model=model,
                 contents=combined_prompt,
                 config=types.GenerateContentConfig(temperature=0.3)
             )
-            
-            raw_text = response.text.strip()
-            
-            # Parse the batch response — each file's doc is separated by a delimiter
-            results = parse_batch_response(raw_text, request.files)
-            
-            logging.info(f"Batch documentation generated for {len(results)} files.")
-            return {"results": results}
+        
+        response = smart_retry(call_fn, label="BatchDoc")
+        raw_text = response.text.strip()
+        
+        # Parse the batch response — each file's doc is separated by a delimiter
+        results = parse_batch_response(raw_text, request.files)
+        
+        logging.info(f"Batch documentation generated for {len(results)} files.")
+        return {"results": results}
 
-        except Exception as e:
-            error_str = str(e).lower()
-            is_retryable = "429" in error_str or "503" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str or "unavailable" in error_str or "overloaded" in error_str
-
-            if is_retryable and attempt < max_retries - 1:
-                wait_time = base_delay * (2 ** attempt)
-                logging.warning(f"Batch rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-                continue
-
-            logging.error(f"Batch generation failed (attempt {attempt + 1}): {e}")
-            return {"error": f"Failed to generate batch documentation: {e}"}
+    except Exception as e:
+        logging.error(f"Batch generation failed: {e}")
+        return {"error": f"Failed to generate batch documentation: {e}"}
 
 
 def build_batch_prompt(files: list, project_context: str) -> str:
@@ -421,43 +436,30 @@ def select_important_files(request: SelectionRequest):
     ["src/main/java/com/app/service/CoreService.java", "src/main/java/com/app/worker/ProcessingWorker.java", "src/controllers/OrderController.java"]
     """
 
-    max_retries = 5
-    base_delay = 8
-
-    for attempt in range(max_retries):
-        try:
-            rate_limiter.wait_if_needed()
-            current_client = get_client()
-            response = current_client.models.generate_content(
-                model=MODEL_NAME,
+    try:
+        def call_fn(client, model):
+            return client.models.generate_content(
+                model=model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.2
                 )
             )
+        
+        response = smart_retry(call_fn, label="Architect")
+        text_response = response.text.strip()
+        if text_response.startswith("```json"):
+            text_response = text_response.replace("```json", "").replace("```", "")
             
-            text_response = response.text.strip()
-            if text_response.startswith("```json"):
-                text_response = text_response.replace("```json", "").replace("```", "")
-                
-            file_list = json.loads(text_response)
+        file_list = json.loads(text_response)
+        
+        if isinstance(file_list, dict):
+            file_list = list(file_list.values())[0]
             
-            if isinstance(file_list, dict):
-                file_list = list(file_list.values())[0]
-                
-            logging.info(f"Architect selected {len(file_list)} files.")
-            return {"selected_files": file_list}
-            
-        except Exception as e:
-            error_str = str(e).lower()
-            is_retryable = "429" in error_str or "503" in error_str or "resource" in error_str or "quota" in error_str or "rate" in error_str or "unavailable" in error_str or "overloaded" in error_str
-            
-            if is_retryable and attempt < max_retries - 1:
-                wait_time = base_delay * (2 ** attempt)
-                logging.warning(f"Architect rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-                continue
-
-            logging.error(f"Architect Agent Failed (attempt {attempt + 1}): {e}")
-            return {"selected_files": []}
+        logging.info(f"Architect selected {len(file_list)} files.")
+        return {"selected_files": file_list}
+        
+    except Exception as e:
+        logging.error(f"Architect Agent Failed: {e}")
+        return {"selected_files": []}
