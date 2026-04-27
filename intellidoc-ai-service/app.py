@@ -52,8 +52,11 @@ def get_client():
 
 # Initialize first client for health checks
 try:
-    client = genai.Client(api_key=API_KEYS[0])
-    logging.info(f"Gemini 2.5 Flash initialized with {len(API_KEYS)} API key(s).")
+    client = genai.Client(api_key=API_KEYS[0]) if API_KEYS else None
+    if client:
+        logging.info(f"Gemini 2.5 Flash initialized with {len(API_KEYS)} API key(s).")
+    else:
+        logging.warning("No API keys configured — client not initialized.")
 except Exception as e:
     logging.error(f"Error configuring Gemini: {e}")
     client = None
@@ -77,32 +80,36 @@ class RateLimiter:
     
     def wait_if_needed(self):
         """Block until it's safe to make the next API call."""
+        # --- Determine how long to wait (inside lock) ---
         with self._lock:
             now = time.time()
-            
+
             # Clean old timestamps (older than 60s)
             self._timestamps = [t for t in self._timestamps if now - t < 60]
-            
+
+            wait_time = 0.0
+
             # Check minimum interval
             if self._timestamps:
                 elapsed = now - self._timestamps[-1]
                 if elapsed < self._min_interval:
-                    wait_time = self._min_interval - elapsed
-                    logging.info(f"Rate limiter: waiting {wait_time:.1f}s (min interval)")
-                    time.sleep(wait_time)
-                    now = time.time()
-            
+                    wait_time = max(wait_time, self._min_interval - elapsed)
+
             # Check RPM limit
             if len(self._timestamps) >= self._rpm_limit:
                 oldest_in_window = self._timestamps[0]
-                wait_time = 60 - (now - oldest_in_window) + 1  # +1s safety
-                if wait_time > 0:
-                    logging.info(f"Rate limiter: waiting {wait_time:.1f}s (RPM limit)")
-                    time.sleep(wait_time)
-                    now = time.time()
-                    self._timestamps = [t for t in self._timestamps if now - t < 60]
-            
-            self._timestamps.append(now)
+                rpm_wait = 60 - (now - oldest_in_window) + 1  # +1s safety
+                if rpm_wait > 0:
+                    wait_time = max(wait_time, rpm_wait)
+
+        # --- Sleep OUTSIDE the lock so other threads aren't blocked ---
+        if wait_time > 0:
+            logging.info(f"Rate limiter: waiting {wait_time:.1f}s")
+            time.sleep(wait_time)
+
+        # --- Record timestamp (inside lock) ---
+        with self._lock:
+            self._timestamps.append(time.time())
 
 # Tuned for 3 API keys × 5 RPM each = 15 RPM max. Using 12 RPM with 4s interval for safety.
 rate_limiter = RateLimiter(rpm_limit=12, min_interval_seconds=4.0)
@@ -138,8 +145,6 @@ def smart_retry(api_call_fn, max_retries=5, label="API"):
                 wait_time = 8 * (2 ** attempt) + random.uniform(1.0, 3.0)
                 logging.warning(f"{label}: 429 rate limited (attempt {attempt + 1}/{max_retries}). "
                                f"Retrying in {wait_time:.1f}s...")
-
-            time.sleep(wait_time)
 
             time.sleep(wait_time)
 
@@ -346,10 +351,20 @@ def parse_batch_response(raw_text: str, files: list) -> list:
         # Single file — just return the whole response
         results.append({"path": files[0]["path"], "documentation": raw_text})
     elif not results:
-        # Multiple files but no delimiters — split evenly as last resort
-        logging.warning("Batch response missing delimiters, returning full text for first file.")
+        # Multiple files but no delimiters — only first file gets content, rest are lost
+        logging.error(
+            f"Batch response missing '===FILE:' delimiters for {len(files)} files. "
+            f"Only '{files[0]['path']}' will have documentation. "
+            f"Consider reducing batch size or checking the prompt template."
+        )
         results.append({"path": files[0]["path"], "documentation": raw_text})
-    
+        # Return error entries for all other files so callers know they failed
+        for missed_file in files[1:]:
+            results.append({
+                "path": missed_file["path"],
+                "documentation": "Error: AI response did not include this file's documentation (delimiter missing)."
+            })
+
     return results
 
 

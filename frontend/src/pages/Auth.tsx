@@ -361,7 +361,11 @@ export default function Auth() {
                 <button
                   type="button"
                   onClick={() => {
-                    const clientId = 'Ov23liI4IUjAZ1jLsx3W';
+                    const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;
+                    if (!clientId) {
+                      console.error('VITE_GITHUB_CLIENT_ID is not set. GitHub OAuth will not work.');
+                      return;
+                    }
                     const redirectUri = `${window.location.origin}/auth/callback`;
                     const scope = 'user:email';
                     window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}`;

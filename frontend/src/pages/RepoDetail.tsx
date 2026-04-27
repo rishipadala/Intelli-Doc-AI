@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import { useRepoWebSocket } from '@/hooks/useRepoWebSocket';
 import { useProgressLogStore } from '@/stores/progressLogStore';
+import { useRef } from 'react';
 
 export default function RepoDetail() {
   const { id } = useParams<{ id: string }>();
@@ -52,6 +53,10 @@ export default function RepoDetail() {
   const rawLogs = useProgressLogStore((s) => s.logs[id || '']);
   const existingLogs = useMemo(() => rawLogs || [], [rawLogs]);
 
+  // Keep a stable ref to fetchAllDocs so handleStatusUpdate never has a stale closure.
+  // fetchAllDocs is defined below and assigned into this ref after its definition.
+  const fetchAllDocsRef = useRef<(autoSelectReadme?: boolean) => Promise<void>>(async () => {});
+
   // WebSocket Hook — listens for status updates and triggers actions
   const handleStatusUpdate = useCallback((newStatus: string) => {
     // Use the store's getState to avoid stale closure over currentRepo
@@ -61,13 +66,13 @@ export default function RepoDetail() {
 
       if (newStatus === 'ANALYSIS_COMPLETED') {
         toast.success('Analysis Done! Files ready.');
-        setTimeout(() => { setShowLogs(false); fetchAllDocs(); }, 2000);
+        setTimeout(() => { setShowLogs(false); fetchAllDocsRef.current(); }, 2000);
       } else if (newStatus === 'COMPLETED') {
         toast.success('Master README Created!');
-        setTimeout(() => { setShowLogs(false); fetchAllDocs(true); }, 2000);
+        setTimeout(() => { setShowLogs(false); fetchAllDocsRef.current(true); }, 2000);
       }
     }
-  }, [id]);
+  }, [id, updateRepository]);
 
   useRepoWebSocket(id, handleStatusUpdate);
 
@@ -137,6 +142,8 @@ export default function RepoDetail() {
 
   // 4. Fetch Docs Logic
   const fetchAllDocs = async (autoSelectReadme = false) => {
+    // Keep the ref in sync so the WebSocket callback never holds a stale version
+    fetchAllDocsRef.current = fetchAllDocs;
     if (!id) return;
     try {
       const docsRes = await repoAPI.getDocumentation(id);
@@ -254,7 +261,10 @@ export default function RepoDetail() {
     const a = document.createElement('a');
     a.href = url;
     a.download = activeFile.split('/').pop() || 'document.md';
+    // Must append to DOM for Firefox/Safari compatibility before clicking
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success('Downloaded file');
   };

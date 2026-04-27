@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -95,8 +96,10 @@ public class AuthController {
                                 .map(item -> item.getAuthority())
                                 .collect(Collectors.toList());
 
-                // 5. Return the response
-                String userId = userRepository.findByEmail(userDetails.getUsername()).get().getId();
+                // 5. Return the response — reuse the userOpt from the pre-auth lookup
+                //    to avoid a second DB round-trip and prevent NoSuchElementException
+                String userId = userOpt.map(User::getId)
+                                .orElseThrow(() -> new RuntimeException("Authenticated user not found in DB"));
 
                 return ResponseEntity.ok(new JwtResponse(jwt,
                                 userId,
@@ -283,10 +286,11 @@ public class AuthController {
         }
 
         /**
-         * Generates a cryptographically random 6-digit OTP.
+         * Generates a cryptographically secure random 6-digit OTP.
+         * Uses SecureRandom instead of Random to prevent prediction attacks.
          */
         private String generateOtp() {
-                Random random = new Random();
+                SecureRandom random = new SecureRandom();
                 int otp = 100000 + random.nextInt(900000);
                 return String.valueOf(otp);
         }

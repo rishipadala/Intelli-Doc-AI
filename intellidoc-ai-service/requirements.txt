@@ -1,5 +1,5 @@
-fastapi # //Use for building API 
-uvicorn # //Use for running API 
-google-genai # //Use for AI model (new unified SDK) 
-python-dotenv # //Use for environment variables 
-pydantic # //Use for type checking and data validation 
+fastapi==0.115.12        # Web framework for building APIs
+uvicorn==0.34.0          # ASGI server for running FastAPI
+google-genai==1.11.0     # Google Gemini unified SDK
+python-dotenv==1.1.0     # Load environment variables from .env
+pydantic==2.11.3         # Data validation and type checking

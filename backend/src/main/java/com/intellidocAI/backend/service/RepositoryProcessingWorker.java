@@ -216,7 +216,14 @@ public class RepositoryProcessingWorker {
             progressNotifier.sendStatus(repository.getId(), "ANALYSIS_COMPLETED");
 
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            // Mark repo as FAILED here so the status is persisted even if the outer
+            // catch in processRepository is never reached due to the rethrow
+            logger.error("performCodeAnalysis failed for {}: {}", repository.getName(), e.getMessage(), e);
+            repository.setStatus("FAILED");
+            repositoryRepository.save(repository);
+            progressNotifier.sendLog(repository.getId(), "ERROR", "Code analysis failed: " + e.getMessage());
+            progressNotifier.sendStatus(repository.getId(), "FAILED");
+            throw new RuntimeException("Code analysis failed for " + repository.getName(), e);
         } finally {
             FileSystemUtils.cleanupTempDir(tempDir);
         }

@@ -58,7 +58,9 @@ public class RepositoryService {
         Repository repository = new Repository();
         repository.setUrl(repoUrl);
         repository.setUserId(userId);
-        String repoName = repoUrl.substring(repoUrl.lastIndexOf('/') + 1).replace(".git", "");
+        // Use cleanUrl (already stripped of trailing slash and .git) to avoid an empty name
+        // when the user pastes a URL ending with '/'
+        String repoName = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
         repository.setName(repoName);
         repository.setLocalPath(Paths.get(reposDirectory, repoName).toString());
         repository.setStatus("QUEUED");

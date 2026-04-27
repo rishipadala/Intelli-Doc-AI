@@ -22,7 +22,8 @@ export const useRepoWebSocket = (repoId: string | undefined, onStatusUpdate: (st
 
     const client = new Client({
       webSocketFactory: () => new SockJS(WS_URL),
-      debug: (str) => console.log('STOMP: ' + str),
+      // Only log STOMP frames in development — prevents console flooding & data leaks in prod
+      debug: import.meta.env.DEV ? (str) => console.log('STOMP: ' + str) : undefined,
       reconnectDelay: 5000,
       onConnect: () => {
         console.log(`Connected to WS for Repo: ${repoId}`);
