@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(
     title="IntelliDoc AI Service",
     description="An AI service for generating code documentation using Gemini.",
-    version="3.0.0"
+    version="3.1.0"
 )
 
 # ============================================================================================
@@ -37,8 +37,8 @@ if not API_KEYS:
 _key_lock = threading.Lock()
 _current_key_index = 0
 
-# Using gemini-2.5-flash-lite — stable, fast, no 503 capacity issues on free tier
-MODEL_NAME = "gemini-2.5-flash-lite"
+# Using gemini-3.1-flash-lite — newer generation, stable, fast, better capacity than 2.5-flash-lite
+MODEL_NAME = "gemini-3.1-flash-lite"
 
 def get_client():
     """Get a Gemini client configured with the next API key in rotation."""
@@ -53,7 +53,7 @@ def get_client():
 # Initialize first client for health checks
 try:
     client = genai.Client(api_key=API_KEYS[0])
-    logging.info(f"Gemini 2.5 Flash initialized with {len(API_KEYS)} API key(s).")
+    logging.info(f"Gemini 3.1 Flash initialized with {len(API_KEYS)} API key(s).")
 except Exception as e:
     logging.error(f"Error configuring Gemini: {e}")
     client = None
