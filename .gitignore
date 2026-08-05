@@ -60,3 +60,5 @@ env/
 *.ntvs*
 *.njsproj
 *.slnbackend/hf-deploy/
+
+backend/hf-deploy/
